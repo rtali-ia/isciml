@@ -30,28 +30,47 @@ class Mesh:
         except Exception as e:
             raise ValueError(e)
 
-    def load_mesh_files(self):
-        txtopen = open(self.vtk_file_name,'r')
-        all_vtk_lines = txtopen.readlines()
-        txtopen.close()
-        skp_hdr_ln_no = 3 # Line no. 4
-        n_pts_ln_no = skp_hdr_ln_no + 1 # This line contains information about the number of nodes
-        npts = int(all_vtk_lines[n_pts_ln_no].split()[1]) # The number of nodes in the mesh
+        self.npts = self.mesh.n_points            
+        self.ncells = self.mesh.n_cells
+        self.nodes = np.array(self.mesh.points)
+        self.tet_nodes = self.mesh.cell_connectivity.reshape((-1,4))
+    
 
-        ndes = np.zeros((npts,3), dtype='float')
+    def get_centroids(self):
+        nk = self.tet_nodes[:, 0]
+        nl = self.tet_nodes[:, 1]
+        nm = self.tet_nodes[:, 2]
+        nn = self.tet_nodes[:, 3]
+        self.centroids = (self.nodes[nk, :] + self.nodes[nl, :] + self.nodes[nm, :] + self.nodes[nn, :]) / 4.0
+    
+    def get_volumes(self):
+        ntt = len(self.tet_nodes)
+        vot = np.zeros((ntt))
+        for itet in np.arange(0, ntt):
+            n1 = self.tet_nodes[itet, 0]
+            n2 = self.tet_nodes[itet, 1]
+            n3 = self.tet_nodes[itet, 2]
+            n4 = self.tet_nodes[itet, 3]
+            x1 = self.nodes[n1, 0]
+            y1 = self.nodes[n1, 1]
+            z1 = self.nodes[n1, 2]
+            x2 = self.nodes[n2, 0]
+            y2 = self.nodes[n2, 1]
+            z2 = self.nodes[n2, 2]
+            x3 = self.nodes[n3, 0]
+            y3 = self.nodes[n3, 1]
+            z3 = self.nodes[n3, 2]
+            x4 = self.nodes[n4, 0]
+            y4 = self.nodes[n4, 1]
+            z4 = self.nodes[n4, 2]
+            pv = (
+                (x4 - x1) * ((y2 - y1) * (z3 - z1) - (z2 - z1) * (y3 - y1))
+                + (y4 - y1) * ((z2 - z1) * (x3 - x1) - (x2 - x1) * (z3 - z1))
+                + (z4 - z1) * ((x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1))
+            )
+            vot[itet] = np.abs(pv / 6.0)
+        self.volumes = vot
 
-        for i_pt in range(0, npts):
-            ndes[i_pt,:] = list(map(float, all_vtk_lines[n_pts_ln_no+1+i_pt].split()[0:])) # Read in the coordinates of the nodes
-        
-        cells_ln_no = n_pts_ln_no + 1 + npts + 1 # This line contains information about the number of tetrahedral cells.
-        ncells = int(all_vtk_lines[cells_ln_no].split()[1]) # Get the value of the number of cells (tetrahedra) in the mesh
-
-        tet_ndes = np.zeros((ncells, 4), dtype='int')
-
-        for i_cell in range(0, ncells):
-            tet_ndes[i_cell,:] = list(map(int, all_vtk_lines[cells_ln_no+1+i_cell].split()[1:])) # Read in the node indices (starting from 0) for individual tetrahedron
-            
-        return npts, ncells, ndes, tet_ndes
 
 @click.command()
 @click.option(
