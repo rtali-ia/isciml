@@ -4,7 +4,6 @@ import pandas as pd
 import logging
 from rich.logging import RichHandler
 from tqdm import tqdm
-from pydantic import BaseModel
 import sys
 import yaml
 import os
@@ -12,6 +11,7 @@ import pyvista as pv
 import calc_and_mig_kx_ky_kz
 from typing import Union
 from mpi4py import MPI
+import ctypes
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -19,15 +19,17 @@ size = comm.Get_size()
 
 FORMAT = "%(message)s"
 logging.basicConfig(
-    level="NOTSET", format='Rank: ' + str(rank) + ': %(asctime)s - %(message)s', datefmt="[%X]", handlers=[RichHandler()]
+    level="NOTSET",
+    format="Rank: " + str(rank) + "/" + str(size) + ": %(asctime)s - %(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler()],
 )
 log = logging.getLogger("rich")
 
 
 class Mesh:
     def __init__(self, vtk_file_name: Union[str, os.PathLike]):
-
-        log.debug("Reading vtk file %s"%vtk_file_name)
+        log.debug("Reading vtk file %s" % vtk_file_name)
         if os.path.exists(vtk_file_name):
             self.vtk_file_name = vtk_file_name
         else:
@@ -103,7 +105,7 @@ class MagneticProperties:
         ky: float = 1.0,
         kz: float = 1.0,
     ):
-        log.debug("Reading magnetic properties %s"%file_name)
+        log.debug("Reading magnetic properties %s" % file_name)
         if os.path.exists(file_name):
             self.file_name = file_name
         else:
@@ -116,7 +118,7 @@ class MagneticProperties:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
-        log.debug("Reading magnetic properties %s done!"%file_name)
+        log.debug("Reading magnetic properties %s done!" % file_name)
 
         if len(self.properties.shape) > 0:
             self.n_cells = self.properties.shape[0]
@@ -145,7 +147,7 @@ class MagneticProperties:
             self.kz = self.properties[:, 3]
         else:
             self.kz = np.full((self.n_cells,), kz)
-        
+
         log.debug("Setting all magnetic properties done!")
 
 
@@ -181,7 +183,7 @@ class MagneticAdjointSolver:
         log.debug("Solver initialization done!")
 
     def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
-        log.debug("Solver started for %s"%magnetic_properties.file_name)
+        log.debug("Solver started for %s" % magnetic_properties.file_name)
         rho_sus = np.zeros((10000000), dtype="float32")
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
@@ -235,7 +237,7 @@ class MagneticAdjointSolver:
             ctet,
             vtet,
         )
-        log.debug("Solver done for %s"%magnetic_properties.file_name)
+        log.debug("Solver done for %s" % magnetic_properties.file_name)
         return mig_data[0 : mesh.ncells]
 
 
@@ -243,25 +245,24 @@ class MagneticAdjointSolver:
 @click.option(
     "--config_file",
     help="Configuration file in YAML format",
-    type = click.Path(),
+    type=click.Path(),
     required=True,
     show_default=True,
 )
 def isciml(config_file: os.PathLike):
-
     log.debug("Reading configuration file")
     if os.path.exists(config_file):
         try:
-            with open(config_file,"r") as fp:
+            with open(config_file, "r") as fp:
                 config = yaml.safe_load(fp)
         except Exception as e:
             log.error(e)
             raise ValueError(e)
     else:
-        msg = "File %s doesn't exist"%config_file
+        msg = "File %s doesn't exist" % config_file
         log.error(msg)
         raise ValueError(msg)
-    
+
     log.debug("Reading configuration file done!")
 
     mesh = Mesh(config["vtk_file"])
@@ -271,7 +272,7 @@ def isciml(config_file: os.PathLike):
     properties = MagneticProperties(config["magnetic_properties_file"])
     solver = MagneticAdjointSolver(config["receiver_locations_file"])
     output = solver.solve(mesh, properties)
-    #np.save("output.npy", output)
+    # np.save("output.npy", output)
     return 0
 
 
