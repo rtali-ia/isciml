@@ -196,8 +196,6 @@ class MagneticAdjointSolver:
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-        log.info(nodes)
-        
         
         mig_data = calc_and_mig_kx_ky_kz.calc_and_mig_field(
             rho_sus,
@@ -234,10 +232,10 @@ def isciml(**kwargs):
     mesh.get_centroids()
     mesh.get_volumes()
 
-    properties = MagneticProperties("material_properties.npy")
+    properties = MagneticProperties("properties_0.npy")
     solver = MagneticAdjointSolver("receiver_locations.csv")
     output = solver.solve(mesh, properties)
-
+    np.save("output.npy",output)
     return 0
 
 
