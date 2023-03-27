@@ -97,31 +97,52 @@ class MagneticProperties:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
-        
+
         self.n_cells = self.properties.shape[0]
         if len(self.properties.shape) > 0:
-            self.susceptibility = self.properties[:,0]
+            self.susceptibility = self.properties[:, 0]
         else:
             self.susceptibility = self.properties
-        
+
         if len(self.properties.shape) > 1:
-            self.kx = self.properties[:,1]
+            self.kx = self.properties[:, 1]
         else:
-            self.kx = np.full((self.n_cells,),kx)
+            self.kx = np.full((self.n_cells,), kx)
 
         if len(self.properties.shape) > 2:
-            self.ky = self.properties[:,2]
+            self.ky = self.properties[:, 2]
         else:
-            self.ky = np.full((self.n_cells,),ky)
+            self.ky = np.full((self.n_cells,), ky)
 
         if len(self.properties.shape) > 3:
-            self.kz = self.properties[:,3]
+            self.kz = self.properties[:, 3]
         else:
-            self.kz = np.full((self.n_cells,),kz)
+            self.kz = np.full((self.n_cells,), kz)
 
+
+class MagneticAdjointSolver:
+    def __init__(
+        self,
+        reciever_file_name: Union[str, os.PathLike],
+        Bx: float = 4594.8,
+        By: float = 19887.1,
+        Bz: float = 41568.2,
+    ):
+        if os.path.exists(reciever_file_name):
+            self.reciever_file_name = reciever_file_name
+        else:
+            msg = "File %s does not exist"%reciever_file_name
+            log.error(msg)
+            raise ValueError(msg)
         
-
-
+        self.Bx  = Bx
+        self.By  = By
+        self.Bz  = Bz
+        self.Bv = np.sqrt(self.Bx ** 2 + self.By ** 2 + self.Bz ** 2)
+        self.LX = np.float32(self.Bx / self.Bv)
+        self.LY = np.float32(self.By / self.Bv)
+        self.LZ = np.float32(self.Bz / self.Bv)
+        
 
 
 @click.command()
