@@ -1,5 +1,6 @@
 import click
 import numpy as np
+import pandas as pd
 import logging
 from rich.logging import RichHandler
 from tqdm import tqdm
@@ -8,6 +9,7 @@ import sys
 import pyaml
 import os
 import pyvista as pv
+import calc_and_mig_kx_ky_kz
 from typing import Union
 
 FORMAT = "%(message)s"
@@ -35,6 +37,9 @@ class Mesh:
         self.ncells = self.mesh.n_cells
         self.nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
+
+    def __str__(self):
+        return str(self.mesh)
 
     def get_centroids(self):
         nk = self.tet_nodes[:, 0]
@@ -98,23 +103,30 @@ class MagneticProperties:
             log.error(e)
             raise ValueError(e)
 
-        self.n_cells = self.properties.shape[0]
         if len(self.properties.shape) > 0:
-            self.susceptibility = self.properties[:, 0]
+            self.n_cells = self.properties.shape[0]
         else:
-            self.susceptibility = self.properties
+            msg = "Magnetic properties file %s is incorrect"%file_name
+            log.error(msg)
+            raise ValueError(msg)
+        
+        if self.properties.ndim == 1:
+            self.properties = np.expand_dims(self.properties, axis=1)
 
-        if len(self.properties.shape) > 1:
+        if self.properties.shape[1] > 0:
+            self.susceptibility = self.properties[:, 0]
+
+        if self.properties.shape[1] > 1:
             self.kx = self.properties[:, 1]
         else:
             self.kx = np.full((self.n_cells,), kx)
 
-        if len(self.properties.shape) > 2:
+        if self.properties.shape[1] > 2:
             self.ky = self.properties[:, 2]
         else:
             self.ky = np.full((self.n_cells,), ky)
 
-        if len(self.properties.shape) > 3:
+        if self.properties.shape[1] > 3:
             self.kz = self.properties[:, 3]
         else:
             self.kz = np.full((self.n_cells,), kz)
@@ -131,18 +143,82 @@ class MagneticAdjointSolver:
         if os.path.exists(reciever_file_name):
             self.reciever_file_name = reciever_file_name
         else:
-            msg = "File %s does not exist"%reciever_file_name
+            msg = "File %s does not exist" % reciever_file_name
             log.error(msg)
             raise ValueError(msg)
-        
-        self.Bx  = Bx
-        self.By  = By
-        self.Bz  = Bz
-        self.Bv = np.sqrt(self.Bx ** 2 + self.By ** 2 + self.Bz ** 2)
+
+        try:
+            self.receiver_locations = pd.read_csv(reciever_file_name)
+        except Exception as e:
+            log.error(e)
+            raise ValueError(e)
+
+        self.Bx = Bx
+        self.By = By
+        self.Bz = Bz
+        self.Bv = np.sqrt(self.Bx**2 + self.By**2 + self.Bz**2)
         self.LX = np.float32(self.Bx / self.Bv)
         self.LY = np.float32(self.By / self.Bv)
         self.LZ = np.float32(self.Bz / self.Bv)
+
+    def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
+        rho_sus = np.zeros((10000000), dtype="float32")
+        rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
+
+        KXt = np.zeros((10000000), dtype="float32")
+        KXt[0 : mesh.ncells] = magnetic_properties.kx
+
+        KYt = np.zeros((10000000), dtype="float32")
+        KYt[0 : mesh.ncells] = magnetic_properties.ky
+
+        KZt = np.zeros((10000000), dtype="float32")
+        KZt[0 : mesh.ncells] = magnetic_properties.kz
+
+        ctet = np.zeros((10000000, 3), dtype="float32")
+        ctet[0:mesh.ncells] = np.float32(mesh.centroids)
+
+        vtet = np.zeros((10000000), dtype="float32")
+        vtet[0:mesh.ncells] = np.float32(mesh.volumes)
+
+        nodes = np.zeros((10000000, 3), dtype="float32")
+        nodes[0 : mesh.npts] = np.float32(mesh.npts)
+
+        tets = np.zeros((10000000, 4), dtype=int)
+        tets[0 : mesh.ncells] = mesh.tet_nodes + 1
+
+        n_obs = len(self.receiver_locations)
+        rx_loc = self.receiver_locations.to_numpy()
+
+        obs_pts = np.zeros((1000000, 3), dtype="float32")
+        obs_pts[0:n_obs] = np.float32(rx_loc[:, 0:3])
         
+        log.info(rx_loc)
+
+        ismag = True
+        rho_sus = rho_sus * self.Bv
+
+        istensor = False
+
+        mig_data = calc_and_mig_kx_ky_kz.calc_and_mig_field(
+            rho_sus,
+            ismag,
+            istensor,
+            KXt,
+            KYt,
+            KZt,
+            self.LX,
+            self.LY,
+            self.LZ,
+            nodes,
+            tets,
+            mesh.ncells,
+            obs_pts,
+            n_obs,
+            ctet,
+            vtet,
+        )
+        return mig_data[0:ntets]
+
 
 
 @click.command()
@@ -154,6 +230,15 @@ class MagneticAdjointSolver:
 )
 def isciml(**kwargs):
     log.info(kwargs)
+    
+    mesh = Mesh("test.vtk")
+    mesh.get_centroids()
+    mesh.get_volumes()
+    
+    properties = MagneticProperties("material_properties.npy")
+    solver = MagneticAdjointSolver("receiver_locations.csv")
+    output = solver.solve(mesh, properties)
+    
     return 0
 
 
