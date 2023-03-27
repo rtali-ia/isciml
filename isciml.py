@@ -164,7 +164,6 @@ class MagneticAdjointSolver:
     def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
         rho_sus = np.zeros((10000000), dtype="float32")
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
-        log.info(rho_sus)
 
         KXt = np.zeros((10000000), dtype="float32")
         KXt[0 : mesh.ncells] = magnetic_properties.kx
@@ -182,7 +181,7 @@ class MagneticAdjointSolver:
         vtet[0 : mesh.ncells] = np.float32(mesh.volumes)
 
         nodes = np.zeros((10000000, 3), dtype="float32")
-        nodes[0 : mesh.npts] = np.float32(mesh.npts)
+        nodes[0 : mesh.npts] = np.float32(mesh.nodes)
 
         tets = np.zeros((10000000, 4), dtype=int)
         tets[0 : mesh.ncells] = mesh.tet_nodes + 1
@@ -193,13 +192,13 @@ class MagneticAdjointSolver:
         obs_pts = np.zeros((1000000, 3), dtype="float32")
         obs_pts[0:n_obs] = np.float32(rx_loc[:, 0:3])
 
-        log.info(rx_loc)
-
         ismag = True
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-
+        log.info(nodes)
+        
+        
         mig_data = calc_and_mig_kx_ky_kz.calc_and_mig_field(
             rho_sus,
             ismag,
@@ -218,7 +217,7 @@ class MagneticAdjointSolver:
             ctet,
             vtet,
         )
-        return mig_data[0:ntets]
+        return mig_data[0:mesh.ncells]
 
 
 @click.command()
