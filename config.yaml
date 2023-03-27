@@ -1,27 +1,6 @@
 version: 1.0
 
-mesh:
-  dir_name: "/Users/USP/S2Labs/empact/Magnetic_Data_Generation_For_AI_Training/Mesh_Files"
-  base_file_name: "Hollister_Test_c_5m"
+vtk_file: "test.vtk"
+receiver_locations_file: "receiver_locations.csv"
+magnetic_properties_file: "material_properties_all.npy"
 
-model:
-  dir_name: '/Users/USP/S2Labs/empact/Magnetic_Data_Generation_For_AI_Training/Input_Model_npy_files/'
-  sus_name_prefix: 'Pipe_Model_samp_sus_'
-  kx_name_prefix:  'Pipe_Model_samp_kx_'
-  ky_name_prefix:  'Pipe_Model_samp_ky_'
-  kz_name_prefix:  'Pipe_Model_samp_kz_'
-
-reciever_locations_file: '/Users/USP/S2Labs/empact/Magnetic_Data_Generation_For_AI_Training/Receiver_Positions/rx_pts_depop_1078.csv'
-
-results:
-  dir_name: '../Generated_Data/'
-  base_file_name: 'Gen_Hollister_Test_c_5m_kx_ky_kz_'
-
-n_cpu: 1
-n_samp: 12
-ismag: True
-istensor: False
-
-Bx: 4594.8
-By: 19887.1 
-Bz: 41568.2

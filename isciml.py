@@ -6,21 +6,28 @@ from rich.logging import RichHandler
 from tqdm import tqdm
 from pydantic import BaseModel
 import sys
-import pyaml
+import yaml
 import os
 import pyvista as pv
 import calc_and_mig_kx_ky_kz
 from typing import Union
+from mpi4py import MPI
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
 
 FORMAT = "%(message)s"
 logging.basicConfig(
-    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+    level="NOTSET", format='Rank: ' + str(rank) + ': %(asctime)s - %(message)s', datefmt="[%X]", handlers=[RichHandler()]
 )
 log = logging.getLogger("rich")
 
 
 class Mesh:
     def __init__(self, vtk_file_name: Union[str, os.PathLike]):
+
+        log.debug("Reading vtk file %s"%vtk_file_name)
         if os.path.exists(vtk_file_name):
             self.vtk_file_name = vtk_file_name
         else:
@@ -32,16 +39,19 @@ class Mesh:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
+        log.debug("Reading mesh completed")
 
         self.npts = self.mesh.n_points
         self.ncells = self.mesh.n_cells
         self.nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
+        log.debug("Generated mesh properties")
 
     def __str__(self):
         return str(self.mesh)
 
     def get_centroids(self):
+        log.debug("Getting centroids")
         nk = self.tet_nodes[:, 0]
         nl = self.tet_nodes[:, 1]
         nm = self.tet_nodes[:, 2]
@@ -52,8 +62,10 @@ class Mesh:
             + self.nodes[nm, :]
             + self.nodes[nn, :]
         ) / 4.0
+        log.debug("Getting centroids done!")
 
     def get_volumes(self):
+        log.debug("Getting volumes")
         ntt = len(self.tet_nodes)
         vot = np.zeros((ntt))
         for itet in np.arange(0, ntt):
@@ -80,6 +92,7 @@ class Mesh:
             )
             vot[itet] = np.abs(pv / 6.0)
         self.volumes = vot
+        log.debug("Getting volumes done!")
 
 
 class MagneticProperties:
@@ -90,6 +103,7 @@ class MagneticProperties:
         ky: float = 1.0,
         kz: float = 1.0,
     ):
+        log.debug("Reading magnetic properties %s"%file_name)
         if os.path.exists(file_name):
             self.file_name = file_name
         else:
@@ -102,6 +116,7 @@ class MagneticProperties:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
+        log.debug("Reading magnetic properties %s done!"%file_name)
 
         if len(self.properties.shape) > 0:
             self.n_cells = self.properties.shape[0]
@@ -130,6 +145,8 @@ class MagneticProperties:
             self.kz = self.properties[:, 3]
         else:
             self.kz = np.full((self.n_cells,), kz)
+        
+        log.debug("Setting all magnetic properties done!")
 
 
 class MagneticAdjointSolver:
@@ -140,6 +157,7 @@ class MagneticAdjointSolver:
         By: float = 19887.1,
         Bz: float = 41568.2,
     ):
+        log.debug("Solver initialization started!")
         if os.path.exists(reciever_file_name):
             self.reciever_file_name = reciever_file_name
         else:
@@ -160,8 +178,10 @@ class MagneticAdjointSolver:
         self.LX = np.float32(self.Bx / self.Bv)
         self.LY = np.float32(self.By / self.Bv)
         self.LZ = np.float32(self.Bz / self.Bv)
+        log.debug("Solver initialization done!")
 
     def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
+        log.debug("Solver started for %s"%magnetic_properties.file_name)
         rho_sus = np.zeros((10000000), dtype="float32")
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
@@ -196,7 +216,7 @@ class MagneticAdjointSolver:
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-        
+
         mig_data = calc_and_mig_kx_ky_kz.calc_and_mig_field(
             rho_sus,
             ismag,
@@ -215,27 +235,43 @@ class MagneticAdjointSolver:
             ctet,
             vtet,
         )
-        return mig_data[0:mesh.ncells]
+        log.debug("Solver done for %s"%magnetic_properties.file_name)
+        return mig_data[0 : mesh.ncells]
 
 
 @click.command()
 @click.option(
-    "--config",
+    "--config_file",
     help="Configuration file in YAML format",
+    type = click.Path(),
     required=True,
     show_default=True,
 )
-def isciml(**kwargs):
-    log.info(kwargs)
+def isciml(config_file: os.PathLike):
 
-    mesh = Mesh("test.vtk")
+    log.debug("Reading configuration file")
+    if os.path.exists(config_file):
+        try:
+            with open(config_file,"r") as fp:
+                config = yaml.safe_load(fp)
+        except Exception as e:
+            log.error(e)
+            raise ValueError(e)
+    else:
+        msg = "File %s doesn't exist"%config_file
+        log.error(msg)
+        raise ValueError(msg)
+    
+    log.debug("Reading configuration file done!")
+
+    mesh = Mesh(config["vtk_file"])
     mesh.get_centroids()
     mesh.get_volumes()
 
-    properties = MagneticProperties("properties_0.npy")
-    solver = MagneticAdjointSolver("receiver_locations.csv")
+    properties = MagneticProperties(config["magnetic_properties_file"])
+    solver = MagneticAdjointSolver(config["receiver_locations_file"])
     output = solver.solve(mesh, properties)
-    np.save("output.npy",output)
+    #np.save("output.npy", output)
     return 0
 
 
