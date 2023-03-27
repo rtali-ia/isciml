@@ -106,10 +106,10 @@ class MagneticProperties:
         if len(self.properties.shape) > 0:
             self.n_cells = self.properties.shape[0]
         else:
-            msg = "Magnetic properties file %s is incorrect"%file_name
+            msg = "Magnetic properties file %s is incorrect" % file_name
             log.error(msg)
             raise ValueError(msg)
-        
+
         if self.properties.ndim == 1:
             self.properties = np.expand_dims(self.properties, axis=1)
 
@@ -164,6 +164,7 @@ class MagneticAdjointSolver:
     def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
         rho_sus = np.zeros((10000000), dtype="float32")
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
+        log.info(rho_sus)
 
         KXt = np.zeros((10000000), dtype="float32")
         KXt[0 : mesh.ncells] = magnetic_properties.kx
@@ -175,10 +176,10 @@ class MagneticAdjointSolver:
         KZt[0 : mesh.ncells] = magnetic_properties.kz
 
         ctet = np.zeros((10000000, 3), dtype="float32")
-        ctet[0:mesh.ncells] = np.float32(mesh.centroids)
+        ctet[0 : mesh.ncells] = np.float32(mesh.centroids)
 
         vtet = np.zeros((10000000), dtype="float32")
-        vtet[0:mesh.ncells] = np.float32(mesh.volumes)
+        vtet[0 : mesh.ncells] = np.float32(mesh.volumes)
 
         nodes = np.zeros((10000000, 3), dtype="float32")
         nodes[0 : mesh.npts] = np.float32(mesh.npts)
@@ -191,7 +192,7 @@ class MagneticAdjointSolver:
 
         obs_pts = np.zeros((1000000, 3), dtype="float32")
         obs_pts[0:n_obs] = np.float32(rx_loc[:, 0:3])
-        
+
         log.info(rx_loc)
 
         ismag = True
@@ -220,7 +221,6 @@ class MagneticAdjointSolver:
         return mig_data[0:ntets]
 
 
-
 @click.command()
 @click.option(
     "--config",
@@ -230,15 +230,15 @@ class MagneticAdjointSolver:
 )
 def isciml(**kwargs):
     log.info(kwargs)
-    
+
     mesh = Mesh("test.vtk")
     mesh.get_centroids()
     mesh.get_volumes()
-    
+
     properties = MagneticProperties("material_properties.npy")
     solver = MagneticAdjointSolver("receiver_locations.csv")
     output = solver.solve(mesh, properties)
-    
+
     return 0
 
 
