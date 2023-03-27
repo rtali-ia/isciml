@@ -8,7 +8,7 @@ setup(
     url='https://github.com/santiadavani/isciml',
     py_modules=["isciml"],
     install_requires=[
-        "click--8.1.3",
+        "click==8.1.3",
         "mpi4py==3.1.4",
         "numpy==1.21.6",
         "pandas==1.3.5",
