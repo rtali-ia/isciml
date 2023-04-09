@@ -1,6 +1,6 @@
-version: 1.0
-
-vtk_file: "test.vtk"
-receiver_locations_file: "receiver_locations.csv"
-magnetic_properties_file: "material_properties_sus.npy"
+vtk_file: test.vtk
+receiver_locations_file: receiver_locations.csv
+magnetic_properties_file: material_properties_sus.npy
+ambient_magnetic_field: [4594.8,19887.1,41568.2]
+solver_mode: adjoint
 

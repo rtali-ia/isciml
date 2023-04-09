@@ -8,8 +8,9 @@ import sys
 import yaml
 import os
 import pyvista as pv
-import calc_mig_all
-from typing import Union
+import adjoint
+import forward
+from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
 
@@ -99,11 +100,7 @@ class Mesh:
 
 class MagneticProperties:
     def __init__(
-        self,
-        file_name: Union[str, os.PathLike],
-        kx: float = 1.0,
-        ky: float = 1.0,
-        kz: float = 1.0,
+        self, file_name: Union[str, os.PathLike], ambient_magnetic_field: List[float]
     ):
         log.debug("Reading magnetic properties %s" % file_name)
         if os.path.exists(file_name):
@@ -133,31 +130,34 @@ class MagneticProperties:
         if self.properties.shape[1] > 0:
             self.susceptibility = self.properties[:, 0]
 
+        Bx = ambient_magnetic_field[0]
+        By = ambient_magnetic_field[1]
+        Bz = ambient_magnetic_field[2]
+        Bv = np.sqrt(Bx**2 + By**2 + Bz**2)
+
         if self.properties.shape[1] > 1:
             self.kx = self.properties[:, 1]
         else:
-            self.kx = np.full((self.n_cells,), kx)
+            self.kx = np.float32(Bx / Bv)
 
         if self.properties.shape[1] > 2:
             self.ky = self.properties[:, 2]
         else:
-            self.ky = np.full((self.n_cells,), ky)
+            self.ky = np.float32(By / Bv)
 
         if self.properties.shape[1] > 3:
             self.kz = self.properties[:, 3]
         else:
-            self.kz = np.full((self.n_cells,), kz)
+            self.kz = np.float32(Bz / Bv)
 
         log.debug("Setting all magnetic properties done!")
 
 
-class MagneticAdjointSolver:
+class MagneticSolver:
     def __init__(
         self,
         reciever_file_name: Union[str, os.PathLike],
-        Bx: float = 4594.8,
-        By: float = 19887.1,
-        Bz: float = 41568.2,
+        ambient_magnetic_field: List[float],
     ):
         log.debug("Solver initialization started!")
         if os.path.exists(reciever_file_name):
@@ -173,17 +173,29 @@ class MagneticAdjointSolver:
             log.error(e)
             raise ValueError(e)
 
-        self.Bx = Bx
-        self.By = By
-        self.Bz = Bz
+        if len(ambient_magnetic_field) != 3:
+            msg = (
+                "Length of ambient magnetic field has to be exactly 3, passed a length of %d"
+                % len(ambient_magnetic_field)
+            )
+            log.error(msg)
+            raise ValueError(msg)
+
+        self.Bx = ambient_magnetic_field[0]
+        self.By = ambient_magnetic_field[1]
+        self.Bz = ambient_magnetic_field[2]
         self.Bv = np.sqrt(self.Bx**2 + self.By**2 + self.Bz**2)
         self.LX = np.float32(self.Bx / self.Bv)
         self.LY = np.float32(self.By / self.Bv)
         self.LZ = np.float32(self.Bz / self.Bv)
         log.debug("Solver initialization done!")
 
-    def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
-        log.debug("Solver started for %s" % magnetic_properties.file_name)
+    def solve(
+        self,
+        mesh: Mesh,
+        magnetic_properties: MagneticProperties,
+        mode: Literal["adjoint", "forward"],
+    ) -> np.ndarray:
         rho_sus = np.zeros((1000000), dtype=float)
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
@@ -209,26 +221,64 @@ class MagneticAdjointSolver:
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-        mig_data = calc_mig_all.calc_and_mig_all_rx(
-            rho_sus,
-            ismag,  # this calls a function calc_and_mig_field
-            istensor,  # We input all the arrays required
-            self.LX,
-            self.LY,
-            self.LZ,
-            self.LX,
-            self.LY,
-            self.LZ,
-            nodes,
-            tets,
-            mesh.ncells,
-            obs_pts,
-            n_obs,
-            ctet,
-            vtet,
-        )
-        log.debug("Solver done for %s" % magnetic_properties.file_name)
-        return mig_data[0 : mesh.ncells]
+
+        #Placeholder --> check for kx, ky, kz length#
+
+        if mode == "adjoint":
+            if isinstance(magnetic_properties.kx,float) and isinstance(magnetic_properties.ky, float) and isinstance(magnetic_properties.kz,float):
+                log.debug("Adjoint solver started for %s" % magnetic_properties.file_name)
+                adjoint_output = adjoint.adjoint(
+                    rho_sus,
+                    ismag,  # this calls a function calc_and_mig_field
+                    istensor,  # We input all the arrays required
+                    magnetic_properties.kx,
+                    magnetic_properties.ky,
+                    magnetic_properties.kz,
+                    self.LX,
+                    self.LY,
+                    self.LZ,
+                    nodes,
+                    tets,
+                    mesh.ncells,
+                    obs_pts,
+                    n_obs,
+                    ctet,
+                    vtet,
+                )
+                log.debug("Adjoint solver done for %s" % magnetic_properties.file_name)
+                output = adjoint_output[0 : mesh.ncells]
+            else:
+                msg = "Expecting float for kx, ky, kz values but recieved kx = %s, ky = %s, kz = %s"%(str(type(magnetic_properties.kx), str(type(magnetic_properties.ky)), str(type(magnetic_properties.kz))))
+        else:
+            log.debug("Forward solver in progress for %s" % magnetic_properties.file_name)
+            kx = np.zeros((1000000), dtype=float)
+            kx[0 : mesh.ncells] = magnetic_properties.kx
+
+            ky = np.zeros((1000000), dtype=float)
+            ky[0 : mesh.ncells] = magnetic_properties.ky
+
+            kz = np.zeros((1000000), dtype=float)
+            kz[0 : mesh.ncells] = magnetic_properties.kz
+    
+            forward_output = forward.forward(
+                rho_sus,
+                ismag,
+                istensor,
+                kx,
+                ky,
+                kz,
+                self.LX,
+                self.LY,
+                self.LZ,
+                nodes,
+                tets,
+                mesh.ncells,
+                obs_pts,
+                n_obs,
+            )
+            output = forward_output[0:n_obs]
+            log.debug("Forward solver is done for %s" % magnetic_properties.file_name)
+        return output
 
 
 @click.command()
@@ -259,10 +309,14 @@ def isciml(config_file: os.PathLike):
     mesh.get_centroids()
     mesh.get_volumes()
 
-    properties = MagneticProperties(config["magnetic_properties_file"])
-    solver = MagneticAdjointSolver(config["receiver_locations_file"])
-    output = solver.solve(mesh, properties)
-    # np.save("output.npy", output)
+    properties = MagneticProperties(
+        config["magnetic_properties_file"], config["ambient_magnetic_field"]
+    )
+    solver = MagneticSolver(
+        config["receiver_locations_file"], config["ambient_magnetic_field"]
+    )
+    output = solver.solve(mesh, properties, mode=config["solver_mode"])
+    np.save("output.npy", output)
     return 0
 
 
