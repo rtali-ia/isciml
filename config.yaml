@@ -2,5 +2,5 @@ version: 1.0
 
 vtk_file: "test.vtk"
 receiver_locations_file: "receiver_locations.csv"
-magnetic_properties_file: "material_properties_all.npy"
+magnetic_properties_file: "material_properties_sus.npy"
 

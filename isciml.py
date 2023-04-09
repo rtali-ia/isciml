@@ -8,7 +8,7 @@ import sys
 import yaml
 import os
 import pyvista as pv
-import calc_and_mig_kx_ky_kz
+import calc_mig_all
 from typing import Union
 from mpi4py import MPI
 import ctypes
@@ -187,15 +187,6 @@ class MagneticAdjointSolver:
         rho_sus = np.zeros((10000000), dtype="float32")
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
-        KXt = np.zeros((10000000), dtype="float32")
-        KXt[0 : mesh.ncells] = magnetic_properties.kx
-
-        KYt = np.zeros((10000000), dtype="float32")
-        KYt[0 : mesh.ncells] = magnetic_properties.ky
-
-        KZt = np.zeros((10000000), dtype="float32")
-        KZt[0 : mesh.ncells] = magnetic_properties.kz
-
         ctet = np.zeros((10000000, 3), dtype="float32")
         ctet[0 : mesh.ncells] = np.float32(mesh.centroids)
 
@@ -218,22 +209,21 @@ class MagneticAdjointSolver:
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-
-        mig_data = calc_and_mig_kx_ky_kz.calc_and_mig_field(
-            rho_sus,
+        migfield_val = calc_mig_all.calc_and_mig_all_rx(
+            r_sus,
             ismag,
             istensor,
-            KXt,
-            KYt,
-            KZt,
             self.LX,
             self.LY,
             self.LZ,
-            nodes,
+            self.LX,
+            self.LY,
+            self.LZ,
+            nds,
             tets,
-            mesh.ncells,
+            ntetra,
             obs_pts,
-            n_obs,
+            n_rx,
             ctet,
             vtet,
         )
