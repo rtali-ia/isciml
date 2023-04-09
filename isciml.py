@@ -184,16 +184,16 @@ class MagneticAdjointSolver:
 
     def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
         log.debug("Solver started for %s" % magnetic_properties.file_name)
-        rho_sus = np.zeros((1000000), dtype="float32")
+        rho_sus = np.zeros((1000000), dtype=float)
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
-        ctet = np.zeros((1000000, 3), dtype="float32")
+        ctet = np.zeros((1000000, 3), dtype=float)
         ctet[0 : mesh.ncells] = np.float32(mesh.centroids)
 
-        vtet = np.zeros((1000000), dtype="float32")
+        vtet = np.zeros((1000000), dtype=float)
         vtet[0 : mesh.ncells] = np.float32(mesh.volumes)
 
-        nodes = np.zeros((1000000, 3), dtype="float32")
+        nodes = np.zeros((1000000, 3), dtype=float)
         nodes[0 : mesh.npts] = np.float32(mesh.nodes)
 
         tets = np.zeros((1000000, 4), dtype=int)
@@ -202,7 +202,7 @@ class MagneticAdjointSolver:
         n_obs = len(self.receiver_locations)
         rx_loc = self.receiver_locations.to_numpy()
 
-        obs_pts = np.zeros((1000000, 3), dtype="float32")
+        obs_pts = np.zeros((1000000, 3), dtype=float)
         obs_pts[0:n_obs] = np.float32(rx_loc[:, 0:3])
 
         ismag = True
