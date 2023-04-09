@@ -210,9 +210,9 @@ class MagneticAdjointSolver:
 
         istensor = False
         mig_data = calc_mig_all.calc_and_mig_all_rx(
-           rho_sus,
-            ismag,          #this calls a function calc_and_mig_field
-            istensor,       #We input all the arrays required
+            rho_sus,
+            ismag,  # this calls a function calc_and_mig_field
+            istensor,  # We input all the arrays required
             self.LX,
             self.LY,
             self.LZ,
