@@ -23,7 +23,7 @@ RUN sudo chown -R ubuntu:ubuntu /home/ubuntu
 RUN cd /home/ubuntu/isciml && \
     pip install -r requirements.txt && \
     cd /home/ubuntu/isciml/lib && \
-    python -m numpy.f2py -c calc_and_mig_all_rx.f90 gtet.f90 gfacet.f90 ggfacet.f90 gzfacet.f90 check_divzero1.f90 check_divzero2.f90 -m calc_mig_all && \
+    python3 -m numpy.f2py -c calc_and_mig_all_rx.f90 gtet.f90 gfacet.f90 ggfacet.f90 gzfacet.f90 check_divzero1.f90 check_divzero2.f90 -m calc_mig_all && \
     rm *.f90
 
 ENV PYTHONPATH="${PYTHONPATH}:/home/ubuntu/isciml/lib"

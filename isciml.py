@@ -184,19 +184,19 @@ class MagneticAdjointSolver:
 
     def solve(self, mesh: Mesh, magnetic_properties: MagneticProperties):
         log.debug("Solver started for %s" % magnetic_properties.file_name)
-        rho_sus = np.zeros((10000000), dtype="float32")
+        rho_sus = np.zeros((1000000), dtype="float32")
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
-        ctet = np.zeros((10000000, 3), dtype="float32")
+        ctet = np.zeros((1000000, 3), dtype="float32")
         ctet[0 : mesh.ncells] = np.float32(mesh.centroids)
 
-        vtet = np.zeros((10000000), dtype="float32")
+        vtet = np.zeros((1000000), dtype="float32")
         vtet[0 : mesh.ncells] = np.float32(mesh.volumes)
 
-        nodes = np.zeros((10000000, 3), dtype="float32")
+        nodes = np.zeros((1000000, 3), dtype="float32")
         nodes[0 : mesh.npts] = np.float32(mesh.nodes)
 
-        tets = np.zeros((10000000, 4), dtype=int)
+        tets = np.zeros((1000000, 4), dtype=int)
         tets[0 : mesh.ncells] = mesh.tet_nodes + 1
 
         n_obs = len(self.receiver_locations)
@@ -209,21 +209,21 @@ class MagneticAdjointSolver:
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-        migfield_val = calc_mig_all.calc_and_mig_all_rx(
-            r_sus,
-            ismag,
-            istensor,
+        mig_data = calc_mig_all.calc_and_mig_all_rx(
+           rho_sus,
+            ismag,          #this calls a function calc_and_mig_field
+            istensor,       #We input all the arrays required
             self.LX,
             self.LY,
             self.LZ,
             self.LX,
             self.LY,
             self.LZ,
-            nds,
+            nodes,
             tets,
-            ntetra,
+            mesh.ncells,
             obs_pts,
-            n_rx,
+            n_obs,
             ctet,
             vtet,
         )
