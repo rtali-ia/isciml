@@ -49,10 +49,10 @@ class Mesh:
         self.old_nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
         ## Nodes are transformed
-        self.nodes = self.old_nodes
-        self.nodes[:,0] = self.old_nodes[:,1]
-        self.nodes[:,1] = self.old_nodes[:,0]
-        self.nodes[:,2] = -self.old_nodes[:,2]
+        self.nodes = np.zeros((len(self.old_nodes), 3), dtype=float)
+        self.nodes[:, 0] = self.old_nodes[:, 1]
+        self.nodes[:, 1] = self.old_nodes[:, 0]
+        self.nodes[:, 2] = -self.old_nodes[:, 2]
 
         log.debug("Generated mesh properties")
 
@@ -192,9 +192,9 @@ class MagneticSolver:
         self.Bz = ambient_magnetic_field[2]
         self.Bv = np.sqrt(self.Bx**2 + self.By**2 + self.Bz**2)
 
-        self.LX = np.float32(self.Bx / self.Bv)
-        self.LY = np.float32(self.By / self.Bv)
-        self.LZ = np.float32(self.Bz / self.Bv)
+        self.LX = float(self.Bx / self.Bv)
+        self.LY = float(self.By / self.Bv)
+        self.LZ = float(self.Bz / self.Bv)
         log.debug("Solver initialization done!")
 
     def solve(
@@ -207,13 +207,13 @@ class MagneticSolver:
         rho_sus[0 : mesh.ncells] = magnetic_properties.susceptibility
 
         ctet = np.zeros((1000000, 3), dtype=float)
-        ctet[0 : mesh.ncells] = np.float32(mesh.centroids)
+        ctet[0 : mesh.ncells] = mesh.centroids
 
         vtet = np.zeros((1000000), dtype=float)
-        vtet[0 : mesh.ncells] = np.float32(mesh.volumes)
+        vtet[0 : mesh.ncells] = mesh.volumes
 
         nodes = np.zeros((1000000, 3), dtype=float)
-        nodes[0 : mesh.npts] = np.float32(mesh.nodes)
+        nodes[0 : mesh.npts] = mesh.nodes
 
         tets = np.zeros((1000000, 4), dtype=int)
         tets[0 : mesh.ncells] = mesh.tet_nodes + 1
@@ -221,25 +221,31 @@ class MagneticSolver:
         n_obs = len(self.receiver_locations)
         rx_loc_old = self.receiver_locations.to_numpy()
 
-        obs_pts = np.zeros((1000000, 3), dtype=float)
-        obs_pts[0:n_obs] = np.float32(rx_loc[:, 0:3])
-
         ismag = True
         rho_sus = rho_sus * self.Bv
 
         istensor = False
 
-        # rx locations are transformed 
-        rx_loc = rx_loc_old
-        rx_loc[:,0]=rx_loc_old[:,1]
-        rx_loc[:,1]=rx_loc_old[:,0]
-        rx_loc[:,2]=-rx_loc_old[:,2]
-        
-        #Placeholder --> check for kx, ky, kz length#
+        # rx locations are transformed
+        rx_loc = np.zeros((len(rx_loc_old), 3), dtype=float)
+        rx_loc[:, 0] = rx_loc_old[:, 1]
+        rx_loc[:, 1] = rx_loc_old[:, 0]
+        rx_loc[:, 2] = -rx_loc_old[:, 2]
+
+        obs_pts = np.zeros((1000000, 3), dtype=float)
+        obs_pts[0:n_obs] = rx_loc[:, 0:3]
+
+        # Placeholder --> check for kx, ky, kz length#
 
         if mode == "adjoint":
-            if isinstance(magnetic_properties.kx,float) and isinstance(magnetic_properties.ky, float) and isinstance(magnetic_properties.kz,float):
-                log.debug("Adjoint solver started for %s" % magnetic_properties.file_name)
+            if (
+                isinstance(magnetic_properties.kx, float)
+                and isinstance(magnetic_properties.ky, float)
+                and isinstance(magnetic_properties.kz, float)
+            ):
+                log.debug(
+                    "Adjoint solver started for %s" % magnetic_properties.file_name
+                )
                 adjoint_output = adjoint.adjoint(
                     rho_sus,
                     ismag,  # this calls a function calc_and_mig_field
@@ -261,9 +267,22 @@ class MagneticSolver:
                 log.debug("Adjoint solver done for %s" % magnetic_properties.file_name)
                 output = adjoint_output[0 : mesh.ncells]
             else:
-                msg = "Expecting float for kx, ky, kz values but recieved kx = %s, ky = %s, kz = %s"%(str(type(magnetic_properties.kx), str(type(magnetic_properties.ky)), str(type(magnetic_properties.kz))))
+                msg = (
+                    "Expecting float for kx, ky, kz values but recieved kx = %s, ky = %s, kz = %s"
+                    % (
+                        str(
+                            type(magnetic_properties.kx),
+                            str(type(magnetic_properties.ky)),
+                            str(type(magnetic_properties.kz)),
+                        )
+                    )
+                )
+                log.error(msg)
+                raise ValueError(msg)
         else:
-            log.debug("Forward solver in progress for %s" % magnetic_properties.file_name)
+            log.debug(
+                "Forward solver in progress for %s" % magnetic_properties.file_name
+            )
             kx = np.zeros((1000000), dtype=float)
             kx[0 : mesh.ncells] = magnetic_properties.kx
 
@@ -272,7 +291,7 @@ class MagneticSolver:
 
             kz = np.zeros((1000000), dtype=float)
             kz[0 : mesh.ncells] = magnetic_properties.kz
-    
+
             forward_output = forward.forward(
                 rho_sus,
                 ismag,
