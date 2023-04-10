@@ -46,8 +46,14 @@ class Mesh:
 
         self.npts = self.mesh.n_points
         self.ncells = self.mesh.n_cells
-        self.nodes = np.array(self.mesh.points)
+        self.old_nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
+        ## Nodes are transformed
+        self.nodes = self.old_nodes
+        self.nodes[:,0] = self.old_nodes[:,1]
+        self.nodes[:,1] = self.old_nodes[:,0]
+        self.nodes[:,2] = -self.old_nodes[:,2]
+
         log.debug("Generated mesh properties")
 
     def __str__(self):
@@ -138,17 +144,17 @@ class MagneticProperties:
         if self.properties.shape[1] > 1:
             self.kx = self.properties[:, 1]
         else:
-            self.kx = np.float32(Bx / Bv)
+            self.kx = float(Bx / Bv)
 
         if self.properties.shape[1] > 2:
             self.ky = self.properties[:, 2]
         else:
-            self.ky = np.float32(By / Bv)
+            self.ky = float(By / Bv)
 
         if self.properties.shape[1] > 3:
             self.kz = self.properties[:, 3]
         else:
-            self.kz = np.float32(Bz / Bv)
+            self.kz = float(Bz / Bv)
 
         log.debug("Setting all magnetic properties done!")
 
@@ -185,6 +191,7 @@ class MagneticSolver:
         self.By = ambient_magnetic_field[1]
         self.Bz = ambient_magnetic_field[2]
         self.Bv = np.sqrt(self.Bx**2 + self.By**2 + self.Bz**2)
+
         self.LX = np.float32(self.Bx / self.Bv)
         self.LY = np.float32(self.By / self.Bv)
         self.LZ = np.float32(self.Bz / self.Bv)
@@ -212,7 +219,7 @@ class MagneticSolver:
         tets[0 : mesh.ncells] = mesh.tet_nodes + 1
 
         n_obs = len(self.receiver_locations)
-        rx_loc = self.receiver_locations.to_numpy()
+        rx_loc_old = self.receiver_locations.to_numpy()
 
         obs_pts = np.zeros((1000000, 3), dtype=float)
         obs_pts[0:n_obs] = np.float32(rx_loc[:, 0:3])
@@ -222,6 +229,12 @@ class MagneticSolver:
 
         istensor = False
 
+        # rx locations are transformed 
+        rx_loc = rx_loc_old
+        rx_loc[:,0]=rx_loc_old[:,1]
+        rx_loc[:,1]=rx_loc_old[:,0]
+        rx_loc[:,2]=-rx_loc_old[:,2]
+        
         #Placeholder --> check for kx, ky, kz length#
 
         if mode == "adjoint":
