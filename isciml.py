@@ -144,17 +144,17 @@ class MagneticProperties:
         if self.properties.shape[1] > 1:
             self.kx = self.properties[:, 1]
         else:
-            self.kx = float(Bx / Bv)
+            self.kx = Bx / Bv
 
         if self.properties.shape[1] > 2:
             self.ky = self.properties[:, 2]
         else:
-            self.ky = float(By / Bv)
+            self.ky = By / Bv
 
         if self.properties.shape[1] > 3:
             self.kz = self.properties[:, 3]
         else:
-            self.kz = float(Bz / Bv)
+            self.kz = Bz / Bv
 
         log.debug("Setting all magnetic properties done!")
 
@@ -192,9 +192,9 @@ class MagneticSolver:
         self.Bz = ambient_magnetic_field[2]
         self.Bv = np.sqrt(self.Bx**2 + self.By**2 + self.Bz**2)
 
-        self.LX = float(self.Bx / self.Bv)
-        self.LY = float(self.By / self.Bv)
-        self.LZ = float(self.Bz / self.Bv)
+        self.LX = self.Bx / self.Bv
+        self.LY = self.By / self.Bv
+        self.LZ = self.Bz / self.Bv
         log.debug("Solver initialization done!")
 
     def solve(
