@@ -46,13 +46,8 @@ class Mesh:
 
         self.npts = self.mesh.n_points
         self.ncells = self.mesh.n_cells
-        self.old_nodes = np.array(self.mesh.points)
+        self.nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
-        ## Nodes are transformed
-        self.nodes = np.zeros((len(self.old_nodes), 3), dtype=float)
-        self.nodes[:, 0] = self.old_nodes[:, 1]
-        self.nodes[:, 1] = self.old_nodes[:, 0]
-        self.nodes[:, 2] = -self.old_nodes[:, 2]
 
         log.debug("Generated mesh properties")
 
@@ -219,18 +214,12 @@ class MagneticSolver:
         tets[0 : mesh.ncells] = mesh.tet_nodes + 1
 
         n_obs = len(self.receiver_locations)
-        rx_loc_old = self.receiver_locations.to_numpy()
+        rx_loc = self.receiver_locations.to_numpy()
 
         ismag = True
         rho_sus = rho_sus * self.Bv
 
         istensor = False
-
-        # rx locations are transformed
-        rx_loc = np.zeros((len(rx_loc_old), 3), dtype=float)
-        rx_loc[:, 0] = rx_loc_old[:, 1]
-        rx_loc[:, 1] = rx_loc_old[:, 0]
-        rx_loc[:, 2] = -rx_loc_old[:, 2]
 
         obs_pts = np.zeros((1000000, 3), dtype=float)
         obs_pts[0:n_obs] = rx_loc[:, 0:3]

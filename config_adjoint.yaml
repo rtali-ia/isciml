@@ -1,6 +1,6 @@
-vtk_file: test.vtk
-receiver_locations_file: receiver_locations.csv
-magnetic_properties_file: material_properties_sus.npy
-ambient_magnetic_field: [4594.8,19887.1,41568.2]
+vtk_file: ../data/mesh.vtk
+receiver_locations_file: ../data/receiver_locations.csv
+magnetic_properties_file: ../data/adjoints/inputs/geomag_pipe_sus_0.npy
+ambient_magnetic_field: [820.5,16241.7,53380.0]
 solver_mode: adjoint
 
