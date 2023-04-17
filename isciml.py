@@ -19,7 +19,6 @@ import glob
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-os.environ['PYTHONLOGLEVEL'] = 'ERROR'
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -168,7 +167,7 @@ class MagneticSolver:
         self,
         reciever_file_name: Union[str, os.PathLike],
         ambient_magnetic_field: List[float],
-        header: Union[int, List[int], None] = None
+        header: Union[int, List[int], None] = None,
     ):
         if not rank:
             log.debug("Solver initialization started!")
@@ -240,7 +239,6 @@ class MagneticSolver:
 
         obs_pts = np.zeros((1000000, 3), dtype=float)
         obs_pts[0:n_obs] = rx_loc[:, 0:3]
-
 
         if mode == "adjoint":
             if (
@@ -328,13 +326,13 @@ class MagneticSolver:
 @click.option(
     "--receiver_file",
     help="Receiver locations file in CSV format",
-    type = click.Path(),
+    type=click.Path(),
     required=True,
 )
 @click.option(
     "--receiver_header",
     help="Header parameter is Union[int, List[int], None]",
-    type = int,
+    type=int,
     multiple=True,
     default=None,
     show_default=True,
@@ -342,36 +340,35 @@ class MagneticSolver:
 @click.option(
     "--input_folder",
     help="Folder with files contanining magnetic properties in numpy format",
-    type = click.Path(),
+    type=click.Path(),
     required=True,
 )
 @click.option(
     "--ambient_field",
     nargs=3,
     type=click.Tuple([float, float, float]),
-    default = (820.5,16241.7,53380.0),
+    default=(820.5, 16241.7, 53380.0),
     show_default=True,
 )
 @click.option(
     "--output_folder",
     help="Folder with files contanining adjoints or forward in numpy format",
-    type = click.Path(),
+    type=click.Path(),
     required=True,
 )
 @click.option(
     "--output_prefix",
-    help="Output prefix for the file names will be appended to input files. Defaults to adjoint for \"adjoint\" for adjoint mode and \"forward\" for forward mode",
+    help='Output prefix for the file names will be appended to input files. Defaults to adjoint for "adjoint" for adjoint mode and "forward" for forward mode',
     default="",
 )
 @click.option(
     "--solver",
     help="Solver mode adjoint or forward",
-    type = click.Choice(["adjoint","forward"]),
+    type=click.Choice(["adjoint", "forward"]),
     default="adjoint",
-    show_default=True
+    show_default=True,
 )
-def isciml(**kwargs):   
-
+def isciml(**kwargs):
     mesh = Mesh(kwargs["vtk"])
     mesh.get_centroids()
     mesh.get_volumes()
@@ -381,15 +378,25 @@ def isciml(**kwargs):
         kwargs["ambient_field"],
         kwargs["receiver_header"],
     )
-       
+
+    output_folder = kwargs["output_folder"]
+    if os.path.exists(output_folder):
+        if os.listdir(output_folder):
+            msg = "Output folder %s is not empty - exiting" % output_folder
+            if not rank:
+                log.error(msg)
+            sys.exit(1)
+    else:
+        msg = "Output folder %s does not exist - creating.. " % output_folder
+        if not rank:
+            log.debug(msg)
+        os.mkdir(output_folder)
+
     # Reading magnetic properites files and distributing them across processes
     if os.path.exists(kwargs["input_folder"]):
         numpy_files = glob.glob(kwargs["input_folder"] + "/*.npy")
     else:
-        msg = (
-            "Folder %s does not exist or readable"
-            % kwargs["input_folder"]
-        )
+        msg = "Folder %s does not exist or readable" % kwargs["input_folder"]
         log.error(msg)
         sys.exit(1)
 
@@ -414,7 +421,9 @@ def isciml(**kwargs):
         "start_file_index = %d, end_file_index = %d"
         % (start_file_index, end_file_index)
     )
-    log.info("Processing %d files "%(len(numpy_files[start_file_index:end_file_index])))
+    log.info(
+        "Processing %d files " % (len(numpy_files[start_file_index:end_file_index]))
+    )
 
     for _file in track(
         numpy_files[start_file_index:end_file_index], description="Rank %d" % rank
@@ -427,9 +436,9 @@ def isciml(**kwargs):
         if not output_prefix:
             output_prefix = kwargs["solver"]
 
-        adjoint_file_name = kwargs["output_folder"] + "/" + output_prefix + "_" + _file_name
+        adjoint_file_name = output_folder + "/" + output_prefix + "_" + _file_name
         np.save(adjoint_file_name, output)
-    
+
     return 0
 
 
