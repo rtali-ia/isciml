@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import logging
 from rich.logging import RichHandler
+from rich.progress import track
 from tqdm import tqdm
 import sys
 import yaml
@@ -13,10 +14,12 @@ import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
+import glob
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
+os.environ['PYTHONLOGLEVEL'] = 'ERROR'
 
 FORMAT = "%(message)s"
 logging.basicConfig(
@@ -30,7 +33,8 @@ log = logging.getLogger("rich")
 
 class Mesh:
     def __init__(self, vtk_file_name: Union[str, os.PathLike]):
-        log.debug("Reading vtk file %s" % vtk_file_name)
+        if not rank:
+            log.debug("Reading vtk file %s" % vtk_file_name)
         if os.path.exists(vtk_file_name):
             self.vtk_file_name = vtk_file_name
         else:
@@ -42,20 +46,22 @@ class Mesh:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
-        log.debug("Reading mesh completed")
+        if not rank:
+            log.debug("Reading mesh completed")
 
         self.npts = self.mesh.n_points
         self.ncells = self.mesh.n_cells
         self.nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
-
-        log.debug("Generated mesh properties")
+        if not rank:
+            log.debug("Generated mesh properties")
 
     def __str__(self):
         return str(self.mesh)
 
     def get_centroids(self):
-        log.debug("Getting centroids")
+        if not rank:
+            log.debug("Getting centroids")
         nk = self.tet_nodes[:, 0]
         nl = self.tet_nodes[:, 1]
         nm = self.tet_nodes[:, 2]
@@ -66,10 +72,12 @@ class Mesh:
             + self.nodes[nm, :]
             + self.nodes[nn, :]
         ) / 4.0
-        log.debug("Getting centroids done!")
+        if not rank:
+            log.debug("Getting centroids done!")
 
     def get_volumes(self):
-        log.debug("Getting volumes")
+        if not rank:
+            log.debug("Getting volumes")
         ntt = len(self.tet_nodes)
         vot = np.zeros((ntt))
         for itet in np.arange(0, ntt):
@@ -96,7 +104,8 @@ class Mesh:
             )
             vot[itet] = np.abs(pv / 6.0)
         self.volumes = vot
-        log.debug("Getting volumes done!")
+        if not rank:
+            log.debug("Getting volumes done!")
 
 
 class MagneticProperties:
@@ -159,17 +168,20 @@ class MagneticSolver:
         self,
         reciever_file_name: Union[str, os.PathLike],
         ambient_magnetic_field: List[float],
+        header: Union[int, List[int], None] = None
     ):
-        log.debug("Solver initialization started!")
+        if not rank:
+            log.debug("Solver initialization started!")
         if os.path.exists(reciever_file_name):
             self.reciever_file_name = reciever_file_name
         else:
             msg = "File %s does not exist" % reciever_file_name
-            log.error(msg)
+            if not rank:
+                log.error(msg)
             raise ValueError(msg)
 
         try:
-            self.receiver_locations = pd.read_csv(reciever_file_name)
+            self.receiver_locations = pd.read_csv(reciever_file_name, header=header)
         except Exception as e:
             log.error(e)
             raise ValueError(e)
@@ -179,7 +191,8 @@ class MagneticSolver:
                 "Length of ambient magnetic field has to be exactly 3, passed a length of %d"
                 % len(ambient_magnetic_field)
             )
-            log.error(msg)
+            if not rank:
+                log.error(msg)
             raise ValueError(msg)
 
         self.Bx = ambient_magnetic_field[0]
@@ -190,7 +203,8 @@ class MagneticSolver:
         self.LX = self.Bx / self.Bv
         self.LY = self.By / self.Bv
         self.LZ = self.Bz / self.Bv
-        log.debug("Solver initialization done!")
+        if not rank:
+            log.debug("Solver initialization done!")
 
     def solve(
         self,
@@ -311,7 +325,9 @@ class MagneticSolver:
     show_default=True,
 )
 def isciml(config_file: os.PathLike):
-    log.debug("Reading configuration file")
+    if not rank:
+        log.debug("Reading configuration file")
+
     if os.path.exists(config_file):
         try:
             with open(config_file, "r") as fp:
@@ -321,23 +337,111 @@ def isciml(config_file: os.PathLike):
             raise ValueError(e)
     else:
         msg = "File %s doesn't exist" % config_file
-        log.error(msg)
+        if not rank:
+            log.error(msg)
         raise ValueError(msg)
+    if not rank:
+        log.debug("Reading configuration file done!")
 
-    log.debug("Reading configuration file done!")
+    if "vtk_file" in config.keys():
+        mesh = Mesh(config["vtk_file"])
+        mesh.get_centroids()
+        mesh.get_volumes()
+    else:
+        msg = "\"vtk_file\" key is missing in the configuration file -- Exiting"
+        if not rank:
+            log.error(msg)
+        sys.exit(1)
 
-    mesh = Mesh(config["vtk_file"])
-    mesh.get_centroids()
-    mesh.get_volumes()
+    # Solver Setup Done
+    if "receiver_header" in config.keys():
+        receiver_header = config["receiver_header"]
+    else:
+        receiver_header = None
+    
+    if "receiver_locations_file" in config.keys():
+        receiver_locations_file = config["receiver_locations_file"]
+    else:
+        msg = "\"receiver_locations_file\" "
+        solver = MagneticSolver(
+            config["receiver_locations_file"],
+            config["ambient_magnetic_field"],
+            config["receiver_header"],
+        )
+    else:
+        solver = MagneticSolver(
+            config["receiver_locations_file"], config["ambient_magnetic_field"]
+        )
 
-    properties = MagneticProperties(
-        config["magnetic_properties_file"], config["ambient_magnetic_field"]
+    # Output folder setup
+    if "adjoint_folder" in config.keys():
+        # Check output folder
+        adjoint_folder = config["adjoint_folder"]
+        if os.path.exists(config["adjoint_folder"]):
+            if os.listdir(adjoint_folder):
+                if not rank:
+                    msg = "Adjoint folder %s is not empty -- Exiting"%(config["adjoint_folder"])
+                    log.error(msg)
+                sys.exit(1)
+        else:
+            if not rank:
+                log.debug("Folder %s does not exist -- creating... "%config["adjoint_folder"])
+                os.mkdir(adjoint_folder)
+    else:
+        msg = "Adjoint folder is not in config file. Please use the key \"adjoint_folder\" in the configuration file"
+        log.error(msg)
+        sys.exit(1)
+    
+    if "adjoint_prefix" in config.keys():
+        adjoint_prefix = config["adjoint_prefix"]
+    else:
+        if not rank:
+            log.debug("Adjoint prefix is not set. Using default value \"adjoint\"")
+        adjoint_prefix = "adjoint"
+
+    # Reading magnetic properites files and distributing them across processes
+    if os.path.exists(config["magnetic_properties_folder"]):
+        numpy_files = glob.glob(config["magnetic_properties_folder"] + "/*.npy")
+    else:
+        msg = (
+            "Folder %s does not exist or readable"
+            % config["mangetic_peroperties_folder"]
+        )
+        log.error(msg)
+        sys.exit(1)
+
+    total_files = len(numpy_files)
+
+    if size > total_files:
+        msg = (
+            "Number of processes (%d) > Number of files (%d). Please make sure that np <= total files"
+            % (size, total_files)
+        )
+        log.error(msg)
+        sys.exit(1)
+
+    files_per_proc = total_files / size
+    start_file_index = int(rank * files_per_proc)
+
+    if rank == (size - 1):
+        end_file_index = total_files
+    else:
+        end_file_index = int((rank + 1) * files_per_proc)
+    log.info(
+        "start_file_index = %d, end_file_index = %d"
+        % (start_file_index, end_file_index)
     )
-    solver = MagneticSolver(
-        config["receiver_locations_file"], config["ambient_magnetic_field"]
-    )
-    output = solver.solve(mesh, properties, mode=config["solver_mode"])
-    np.save("output.npy", output)
+    log.info("Processing %d files "%(len(numpy_files[start_file_index:end_file_index])))
+
+    for _file in track(
+        numpy_files[start_file_index:end_file_index], description="Rank %d" % rank
+    ):
+        properties = MagneticProperties(_file, config["ambient_magnetic_field"])
+        output = solver.solve(mesh, properties, mode=config["solver_mode"])
+        _file_name = _file.split("/")[-1]
+        adjoint_file_name = adjoint_folder + "/" + adjoint_prefix + "_" + _file_name
+        np.save(adjoint_file_name, output)
+    
     return 0
 
 

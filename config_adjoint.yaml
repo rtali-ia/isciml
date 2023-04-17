@@ -1,6 +1,9 @@
-vtk_file: ../data/mesh.vtk
-receiver_locations_file: ../data/receiver_locations.csv
-magnetic_properties_file: ../data/adjoints/inputs/geomag_pipe_sus_0.npy
+vtk_file: ./data/mesh.vtk
+receiver_locations_file: ./data/receiver_locations.csv
+magnetic_properties_file: ./data/adjoints/inputs/geomag_pipe_sus_0.npy
+magnetic_properties_folder: ./data/adjoints/inputs/
 ambient_magnetic_field: [820.5,16241.7,53380.0]
+adjoint_folder: ./adjoint_outputs
+adjoint_prefix: adjoint
 solver_mode: adjoint
 

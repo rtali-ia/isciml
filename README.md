@@ -11,3 +11,6 @@ Artificial Intelligence (AI) and Machine Learning (ML) applications have become 
 - The cost associated with parallel, high-performance computation, whether cloud-based or on-premises, is often prohibitively high.
 
 Key changes to the form of the simulated input data used for training, and the corresponding design of the architecture of the hidden layers enable ~ O(n) reduction in the computational complexity of the training architecture. In addition, multi-GPU Distributed Deep Learning (DDL) algorithms (Balu et al. 2021) optimized specifically for machine learning problems are deployed for rapid training of the preferred deep learning architecture which is then used for predicting the expected subsurface material property via inference on actual field data. 
+
+```shell
+```
