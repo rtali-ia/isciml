@@ -180,6 +180,9 @@ class MagneticSolver:
                 log.error(msg)
             raise ValueError(msg)
 
+        if not header:
+            header = None
+
         try:
             self.receiver_locations = pd.read_csv(reciever_file_name, header=header)
         except Exception as e:
@@ -238,7 +241,6 @@ class MagneticSolver:
         obs_pts = np.zeros((1000000, 3), dtype=float)
         obs_pts[0:n_obs] = rx_loc[:, 0:3]
 
-        # Placeholder --> check for kx, ky, kz length#
 
         if mode == "adjoint":
             if (
@@ -318,94 +320,75 @@ class MagneticSolver:
 
 @click.command()
 @click.option(
-    "--config_file",
-    help="Configuration file in YAML format",
+    "--vtk",
+    help="Mesh in vtk file format",
     type=click.Path(),
     required=True,
+)
+@click.option(
+    "--receiver_file",
+    help="Receiver locations file in CSV format",
+    type = click.Path(),
+    required=True,
+)
+@click.option(
+    "--receiver_header",
+    help="Header parameter is Union[int, List[int], None]",
+    type = int,
+    multiple=True,
+    default=None,
     show_default=True,
 )
-def isciml(config_file: os.PathLike):
-    if not rank:
-        log.debug("Reading configuration file")
+@click.option(
+    "--input_folder",
+    help="Folder with files contanining magnetic properties in numpy format",
+    type = click.Path(),
+    required=True,
+)
+@click.option(
+    "--ambient_field",
+    nargs=3,
+    type=click.Tuple([float, float, float]),
+    default = (820.5,16241.7,53380.0),
+    show_default=True,
+)
+@click.option(
+    "--output_folder",
+    help="Folder with files contanining adjoints or forward in numpy format",
+    type = click.Path(),
+    required=True,
+)
+@click.option(
+    "--output_prefix",
+    help="Output prefix for the file names will be appended to input files. Defaults to adjoint for \"adjoint\" for adjoint mode and \"forward\" for forward mode",
+    default="",
+)
+@click.option(
+    "--solver",
+    help="Solver mode adjoint or forward",
+    type = click.Choice(["adjoint","forward"]),
+    default="adjoint",
+    show_default=True
+)
+def isciml(**kwargs):   
 
-    if os.path.exists(config_file):
-        try:
-            with open(config_file, "r") as fp:
-                config = yaml.safe_load(fp)
-        except Exception as e:
-            log.error(e)
-            raise ValueError(e)
-    else:
-        msg = "File %s doesn't exist" % config_file
-        if not rank:
-            log.error(msg)
-        raise ValueError(msg)
-    if not rank:
-        log.debug("Reading configuration file done!")
+    mesh = Mesh(kwargs["vtk"])
+    mesh.get_centroids()
+    mesh.get_volumes()
 
-    if "vtk_file" in config.keys():
-        mesh = Mesh(config["vtk_file"])
-        mesh.get_centroids()
-        mesh.get_volumes()
-    else:
-        msg = "\"vtk_file\" key is missing in the configuration file -- Exiting"
-        if not rank:
-            log.error(msg)
-        sys.exit(1)
-
-    # Solver Setup Done
-    if "receiver_header" in config.keys():
-        receiver_header = config["receiver_header"]
-    else:
-        receiver_header = None
-    
-    if "receiver_locations_file" in config.keys():
-        receiver_locations_file = config["receiver_locations_file"]
-    else:
-        msg = "\"receiver_locations_file\" "
-        solver = MagneticSolver(
-            config["receiver_locations_file"],
-            config["ambient_magnetic_field"],
-            config["receiver_header"],
-        )
-    else:
-        solver = MagneticSolver(
-            config["receiver_locations_file"], config["ambient_magnetic_field"]
-        )
-
-    # Output folder setup
-    if "adjoint_folder" in config.keys():
-        # Check output folder
-        adjoint_folder = config["adjoint_folder"]
-        if os.path.exists(config["adjoint_folder"]):
-            if os.listdir(adjoint_folder):
-                if not rank:
-                    msg = "Adjoint folder %s is not empty -- Exiting"%(config["adjoint_folder"])
-                    log.error(msg)
-                sys.exit(1)
-        else:
-            if not rank:
-                log.debug("Folder %s does not exist -- creating... "%config["adjoint_folder"])
-                os.mkdir(adjoint_folder)
-    else:
-        msg = "Adjoint folder is not in config file. Please use the key \"adjoint_folder\" in the configuration file"
-        log.error(msg)
-        sys.exit(1)
-    
-    if "adjoint_prefix" in config.keys():
-        adjoint_prefix = config["adjoint_prefix"]
-    else:
-        if not rank:
-            log.debug("Adjoint prefix is not set. Using default value \"adjoint\"")
-        adjoint_prefix = "adjoint"
-
+    solver = MagneticSolver(
+        kwargs["receiver_file"],
+        kwargs["ambient_field"],
+        kwargs["receiver_header"],
+    )
+       
     # Reading magnetic properites files and distributing them across processes
-    if os.path.exists(config["magnetic_properties_folder"]):
-        numpy_files = glob.glob(config["magnetic_properties_folder"] + "/*.npy")
+    if os.path.exists(kwargs["input_folder"]):
+        numpy_files = glob.glob(kwargs["input_folder"] + "/*.npy")
     else:
         msg = (
             "Folder %s does not exist or readable"
-            % config["mangetic_peroperties_folder"]
+            % kwargs["input_folder"]
         )
         log.error(msg)
         sys.exit(1)
@@ -436,10 +419,15 @@ def isciml(config_file: os.PathLike):
     for _file in track(
         numpy_files[start_file_index:end_file_index], description="Rank %d" % rank
     ):
-        properties = MagneticProperties(_file, config["ambient_magnetic_field"])
-        output = solver.solve(mesh, properties, mode=config["solver_mode"])
+        properties = MagneticProperties(_file, kwargs["ambient_field"])
+        output = solver.solve(mesh, properties, mode=kwargs["solver"])
         _file_name = _file.split("/")[-1]
-        adjoint_file_name = adjoint_folder + "/" + adjoint_prefix + "_" + _file_name
+
+        output_prefix = kwargs["output_prefix"]
+        if not output_prefix:
+            output_prefix = kwargs["solver"]
+
+        adjoint_file_name = kwargs["output_folder"] + "/" + output_prefix + "_" + _file_name
         np.save(adjoint_file_name, output)
     
     return 0
