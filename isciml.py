@@ -339,7 +339,7 @@ class MagneticSolver:
 )
 @click.option(
     "--input_folder",
-    help="Folder with files contanining magnetic properties in numpy format",
+    help="Folder with files containing magnetic properties in numpy format",
     type=click.Path(),
     required=True,
 )
@@ -352,7 +352,7 @@ class MagneticSolver:
 )
 @click.option(
     "--output_folder",
-    help="Folder with files contanining adjoints or forward in numpy format",
+    help="Folder with files containing adjoints or forward in numpy format",
     type=click.Path(),
     required=True,
 )
