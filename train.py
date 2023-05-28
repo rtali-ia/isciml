@@ -54,7 +54,7 @@ class NumpyDataset(Dataset):
 
 
 npydataset = NumpyDataset("/tmp/samples/", "/tmp/targets")
-dataloader = DataLoader(npydataset, batch_size=8)
+dataloader = DataLoader(npydataset, batch_size=1)
 
 model = LitAutoEncoder()
 trainer = pl.Trainer()
