@@ -9,12 +9,16 @@ import sys
 import yaml
 import os
 import pyvista as pv
-import adjoint
-import forward
+
+# import adjoint
+# import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
 import glob
+from train import NumpyDataset, LitAutoEncoder
+from torch.utils.data import Dataset, DataLoader
+import lightning.pytorch as pl
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -316,7 +320,12 @@ class MagneticSolver:
         return output
 
 
-@click.command()
+@click.group()
+def isciml():
+    log.info("isciml ... ")
+
+
+@isciml.command()
 @click.option(
     "--vtk",
     help="Mesh in vtk file format",
@@ -368,7 +377,7 @@ class MagneticSolver:
     default="adjoint",
     show_default=True,
 )
-def isciml(**kwargs):
+def generate_target(**kwargs):
     mesh = Mesh(kwargs["vtk"])
     mesh.get_centroids()
     mesh.get_volumes()
@@ -440,6 +449,71 @@ def isciml(**kwargs):
         np.save(adjoint_file_name, output)
 
     return 0
+
+
+@isciml.command()
+@click.option(
+    "--sample_folder",
+    help="Folder with files containing samples",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "--target_folder",
+    help="Folder with files containing targets",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "--n_blocks",
+    help="Number of blocks in UNet",
+    type=int,
+    default=4,
+    show_default=True,
+)
+@click.option(
+    "--start_filters",
+    help="Number of start filters",
+    type=int,
+    default=32,
+    show_default=True,
+)
+@click.option(
+    "--batch_size",
+    help="Batch size for training",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "--max_epochs",
+    help="Maximum number of epochs",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "--learning_rate",
+    help="Adam optimizer learning rate",
+    type=float,
+    default=1e-3,
+    show_default=True,
+)
+def train(**kwargs):
+    sample_folder = kwargs["sample_folder"]
+    target_folder = kwargs["target_folder"]
+    n_blocks = kwargs["n_blocks"]
+    start_filters = kwargs["start_filters"]
+    batch_size = kwargs["batch_size"]
+    max_epochs = kwargs["max_epochs"]
+    learning_rate=kwargs["learning_rate"]
+
+    npydataset = NumpyDataset(sample_folder, target_folder)
+    dataloader = DataLoader(npydataset, batch_size=batch_size)
+
+    model = LitAutoEncoder(n_blocks=n_blocks, start_filters=start_filters, learning_rate=learning_rate)
+    trainer = pl.Trainer(max_epochs=max_epochs)
+    trainer.fit(model=model, train_dataloaders=dataloader)
 
 
 if __name__ == "__main__":
