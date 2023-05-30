@@ -10,10 +10,9 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 
-RUN pip install poetry
+RUN pip install poetry numpy
 COPY ./ /isciml/
 RUN cd /isciml && \
-    #pip install -r requirements.txt && \
     poetry env use python3.10 && \
     poetry install && \
     cd /isciml/lib && \
