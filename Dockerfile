@@ -21,8 +21,6 @@ RUN cd /isciml && \
     rm *.f90 
 
 ENV PYTHONPATH="${PYTHONPATH}:/isciml/lib"
-# RUN cd /isciml && \
-#     poetry install 
 
 CMD ["/bin/bash"]
 
