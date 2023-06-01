@@ -12,8 +12,8 @@ RUN apt update && \
 
 RUN pip install poetry numpy
 COPY ./ /isciml/
+ENV POETRY_VIRTUALENVS_CREATE=false
 RUN cd /isciml && \
-    poetry env use python3.10 && \
     poetry install && \
     cd /isciml/lib && \
     python3 -m numpy.f2py -c calc_and_mig_all_rx.f90 gtet.f90 gfacet.f90 ggfacet.f90 gzfacet.f90 check_divzero1.f90 check_divzero2.f90 -m adjoint && \
@@ -21,8 +21,8 @@ RUN cd /isciml && \
     rm *.f90 
 
 ENV PYTHONPATH="${PYTHONPATH}:/isciml/lib"
-RUN cd /isciml && \
-    poetry install 
+# RUN cd /isciml && \
+#     poetry install 
 
 CMD ["/bin/bash"]
 

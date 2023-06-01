@@ -5,6 +5,7 @@ description = "Imaging using Scientific Machine Learning"
 authors = ["Santi Adavani <santis@gmail.com>"]
 readme = "README.md"
 
+
 [tool.poetry.dependencies]
 python = ">=3.8,<4.0"
 pyvista = "^0.39.1"
@@ -16,7 +17,8 @@ black = "^23.3.0"
 mpi4py = "^3.1.4"
 tqdm = "^4.65.0"
 pyyaml = "^6.0"
-lightning = "^2.0.2"
+lightning = "2.0"
+torch = "1.13.1"
 
 
 [build-system]
