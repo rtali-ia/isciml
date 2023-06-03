@@ -10,8 +10,8 @@ import yaml
 import os
 import pyvista as pv
 
-# import adjoint
-# import forward
+import adjoint
+import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
