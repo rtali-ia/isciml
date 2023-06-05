@@ -34,8 +34,15 @@ class LitAutoEncoder(pl.LightningModule):
         x_hat = self.unet(x)
         loss = F.mse_loss(x_hat, y)
         # Logging to TensorBoard (if installed) by default
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
+    
+    def validation_step(self, batch, batch_idx):
+        # Validation step
+        x, y = batch
+        x_hat = self.unet(x)
+        loss = F.mse_loss(x_hat, y)
+        self.log("val_loss",loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)

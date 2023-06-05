@@ -132,3 +132,4 @@ dmypy.json
 adjoint_outputs
 lightning_logs
 scripts
+*.ckpt

@@ -9,9 +9,10 @@ import sys
 import yaml
 import os
 import pyvista as pv
+import torch
 
-import adjoint
-import forward
+#import adjoint
+#import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
@@ -499,22 +500,69 @@ def generate_target(**kwargs):
     default=1e-3,
     show_default=True,
 )
-def train(**kwargs):
+@click.option(
+    "--save_model",
+    help="File name to save the checkpoint at the end of training",
+    type=click.Path(),
+    default="pytorch_model.ckpt",
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--load_model",
+    help="Checkpoint file name to load at the beginning of training",
+    type=click.Path(),
+    required=False,
+)
+@click.option(
+    "--train_size",
+    help="Training size",
+    type = float,
+    default = 0.8,
+    show_default=True,
+)
+def train(**kwargs) -> int:
     sample_folder = kwargs["sample_folder"]
     target_folder = kwargs["target_folder"]
     n_blocks = kwargs["n_blocks"]
     start_filters = kwargs["start_filters"]
     batch_size = kwargs["batch_size"]
     max_epochs = kwargs["max_epochs"]
-    learning_rate=kwargs["learning_rate"]
+    learning_rate = kwargs["learning_rate"]
+    save_model = kwargs["save_model"]
+    load_model = kwargs["load_model"]
+    train_size = kwargs["train_size"]
 
     npydataset = NumpyDataset(sample_folder, target_folder)
-    dataloader = DataLoader(npydataset, batch_size=batch_size)
+    
+    train_size = int(train_size * len(npydataset))
+    test_size = len(npydataset) - train_size
+    log.info("Train size = %d, Validation size = %d"%(train_size, test_size))
+    train_dataset, test_dataset = torch.utils.data.random_split(npydataset, [train_size, test_size])
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
+    test_dataloader  = DataLoader(test_dataset, batch_size=batch_size)
 
-    model = LitAutoEncoder(n_blocks=n_blocks, start_filters=start_filters, learning_rate=learning_rate)
+    if load_model:
+        if os.path.exists(load_model):
+            log.info("Loading model from checkpoint %s"%load_model)
+            model = LitAutoEncoder.load_from_checkpoint(checkpoint_path=load_model)
+        else:
+            msg = "%s doesn't exist"%load_model
+            log.error(msg)
+            return -1
+    else:
+        model = LitAutoEncoder(
+            n_blocks=n_blocks, start_filters=start_filters, learning_rate=learning_rate
+        )
+
     trainer = pl.Trainer(max_epochs=max_epochs)
-    trainer.fit(model=model, train_dataloaders=dataloader)
+    trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=test_dataloader)
 
+    if save_model:
+        log.info("Saving model checkpoint at %s"%save_model)
+        trainer.save_checkpoint(save_model)
+
+    return 0
 
 if __name__ == "__main__":
     sys.exit(isciml())  # pragma: no cover
