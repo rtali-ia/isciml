@@ -11,8 +11,8 @@ import os
 import pyvista as pv
 import torch
 
-#import adjoint
-#import forward
+import adjoint
+import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
@@ -20,6 +20,7 @@ import glob
 from train import NumpyDataset, LitAutoEncoder
 from torch.utils.data import Dataset, DataLoader
 import lightning.pytorch as pl
+import multiprocessing as mp
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -521,6 +522,13 @@ def generate_target(**kwargs):
     default = 0.8,
     show_default=True,
 )
+@click.option(
+    "--num_workers",
+    help="Number of workers for data loader",
+    type = int,
+    default = 1,
+    show_default=True,
+)
 def train(**kwargs) -> int:
     sample_folder = kwargs["sample_folder"]
     target_folder = kwargs["target_folder"]
@@ -532,6 +540,7 @@ def train(**kwargs) -> int:
     save_model = kwargs["save_model"]
     load_model = kwargs["load_model"]
     train_size = kwargs["train_size"]
+    num_workers = min(mp.cpu_count(),kwargs["num_workers"])
 
     npydataset = NumpyDataset(sample_folder, target_folder)
     
@@ -539,8 +548,9 @@ def train(**kwargs) -> int:
     test_size = len(npydataset) - train_size
     log.info("Train size = %d, Validation size = %d"%(train_size, test_size))
     train_dataset, test_dataset = torch.utils.data.random_split(npydataset, [train_size, test_size])
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
-    test_dataloader  = DataLoader(test_dataset, batch_size=batch_size)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
+    test_dataloader  = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
 
     if load_model:
         if os.path.exists(load_model):

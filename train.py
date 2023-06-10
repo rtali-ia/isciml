@@ -9,6 +9,7 @@ import logging
 from rich.logging import RichHandler
 from rich.progress import track
 
+
 FORMAT = "%(message)s"
 logging.basicConfig(
     level="NOTSET",
