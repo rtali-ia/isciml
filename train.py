@@ -28,6 +28,9 @@ class LitAutoEncoder(pl.LightningModule):
         )
         self.learning_rate = learning_rate
 
+    def forward(self, x):
+        return self.unet(x)
+    
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
         # it is independent of forward
@@ -56,12 +59,16 @@ class NumpyDataset(Dataset):
         self.target_dir = target_dir
 
         self.sample_files = []
-        for fname in glob.iglob(self.sample_dir + "/**", recursive=True):
+        _input_sample_files = sorted(os.listdir(sample_dir))
+        for _item in _input_sample_files:
+            fname = self.sample_dir + "/" + _item
             if os.path.isfile(fname) and fname.endswith(".npy"):
                 self.sample_files.append(fname)
 
         self.target_files = []
-        for fname in glob.iglob(self.target_dir + "/**", recursive=True):
+        _input_target_files = sorted(os.listdir(target_dir))
+        for _item in _input_target_files:
+            fname = self.target_dir + "/" + _item
             if os.path.isfile(fname) and fname.endswith(".npy"):
                 self.target_files.append(fname)
 
@@ -119,6 +126,7 @@ class NumpyDataset(Dataset):
         return out_array
 
     def __getitem__(self, idx):
+        log.info("Sample = %s, Target = %s"%(self.sample_files[idx],self.target_files[idx]))
         sample = self._reshape_1d_to_2d(
             np.load(self.sample_files[idx]).astype(np.float32)
         )

@@ -11,8 +11,8 @@ import os
 import pyvista as pv
 import torch
 
-import adjoint
-import forward
+# import adjoint
+# import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
@@ -536,6 +536,13 @@ def generate_target(**kwargs):
     default=1,
     show_default=True,
 )
+@click.option(
+    "--strategy",
+    help = "Distributed Data Parallel Strategy",
+    type = str,
+    default = "ddp",
+    show_default=True,
+)
 def train(**kwargs) -> int:
     sample_folder = kwargs["sample_folder"]
     target_folder = kwargs["target_folder"]
@@ -548,6 +555,7 @@ def train(**kwargs) -> int:
     load_model = kwargs["load_model"]
     train_size = kwargs["train_size"]
     num_workers = min(mp.cpu_count(), kwargs["num_workers"])
+    strategy = kwargs["strategy"]
 
     npydataset = NumpyDataset(sample_folder, target_folder)
 
@@ -580,7 +588,7 @@ def train(**kwargs) -> int:
 
     if torch.cuda.is_available():
         devices = min(kwargs["n_gpus"], torch.cuda.device_count())
-        trainer = pl.Trainer(max_epochs=max_epochs, accelerator="gpu", devices=devices)
+        trainer = pl.Trainer(max_epochs=max_epochs, accelerator="gpu", devices=devices, strategy=strategy)
     else:
         trainer = pl.Trainer(max_epochs=max_epochs)
 
