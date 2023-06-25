@@ -4,6 +4,7 @@ import pandas as pd
 import logging
 from rich.logging import RichHandler
 from rich.progress import track
+from rich.console import Console
 from tqdm import tqdm
 import sys
 import yaml
@@ -11,8 +12,8 @@ import os
 import pyvista as pv
 import torch
 
-import adjoint
-import forward
+# import adjoint
+# import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
@@ -22,6 +23,8 @@ from torch.utils.data import Dataset, DataLoader
 import lightning.pytorch as pl
 import multiprocessing as mp
 
+
+console = Console()
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
@@ -538,10 +541,34 @@ def generate_target(**kwargs):
 )
 @click.option(
     "--strategy",
-    help = "Distributed Data Parallel Strategy",
-    type = str,
-    default = "ddp",
+    help="Distributed Data Parallel Strategy",
+    type=str,
+    default="auto",
     show_default=True,
+)
+@click.option(
+    "--checkpoint_folder",
+    help="Checkpoint folder",
+    type=click.Path(),
+    required=False,
+    default="./lightning_checkpoint_folder",
+    show_default=True,
+)
+@click.option(
+    "--every_n_epochs",
+    help="Number of epochs between checkpoints. This value must be None or non-negative.",
+    type=int,
+    default=None,
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--save_top_k",
+    help="if save_top_k == k, the best k models according to the quantity monitored will be saved",
+    type=int,
+    default=1,
+    show_default=True,
+    required=False,
 )
 def train(**kwargs) -> int:
     sample_folder = kwargs["sample_folder"]
@@ -556,6 +583,11 @@ def train(**kwargs) -> int:
     train_size = kwargs["train_size"]
     num_workers = min(mp.cpu_count(), kwargs["num_workers"])
     strategy = kwargs["strategy"]
+    checkpoint_folder = kwargs["checkpoint_folder"]
+    every_n_epochs = kwargs["every_n_epochs"]
+    save_top_k = kwargs["save_top_k"]
+
+    console.print(kwargs)
 
     npydataset = NumpyDataset(sample_folder, target_folder)
 
@@ -573,28 +605,40 @@ def train(**kwargs) -> int:
         test_dataset, batch_size=batch_size, num_workers=num_workers
     )
 
-    if load_model:
-        if os.path.exists(load_model):
-            log.info("Loading model from checkpoint %s" % load_model)
-            model = LitAutoEncoder.load_from_checkpoint(checkpoint_path=load_model)
-        else:
-            msg = "%s doesn't exist" % load_model
-            log.error(msg)
-            return -1
-    else:
-        model = LitAutoEncoder(
-            n_blocks=n_blocks, start_filters=start_filters, learning_rate=learning_rate
-        )
+    model = LitAutoEncoder(
+        n_blocks=n_blocks, start_filters=start_filters, learning_rate=learning_rate
+    )
+
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=checkpoint_folder, every_n_epochs=every_n_epochs, save_top_k=save_top_k
+    )
 
     if torch.cuda.is_available():
         devices = min(kwargs["n_gpus"], torch.cuda.device_count())
-        trainer = pl.Trainer(max_epochs=max_epochs, accelerator="gpu", devices=devices, strategy=strategy)
+        trainer = pl.Trainer(
+            max_epochs=max_epochs,
+            accelerator="gpu",
+            devices=devices,
+            strategy=strategy,
+            callbacks=[checkpoint_callback],
+        )
     else:
-        trainer = pl.Trainer(max_epochs=max_epochs)
+        trainer = pl.Trainer(max_epochs=max_epochs, callbacks=[checkpoint_callback])
 
-    trainer.fit(
-        model=model, train_dataloaders=train_dataloader, val_dataloaders=test_dataloader
-    )
+    if load_model:
+        if os.path.exists(load_model):
+            trainer.fit(
+                model=model,
+                train_dataloaders=train_dataloader,
+                val_dataloaders=test_dataloader,
+                ckpt_path=load_model,
+            )
+    else:
+        trainer.fit(
+            model=model,
+            train_dataloaders=train_dataloader,
+            val_dataloaders=test_dataloader,
+        )
 
     if save_model:
         log.info("Saving model checkpoint at %s" % save_model)
