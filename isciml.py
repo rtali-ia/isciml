@@ -12,8 +12,8 @@ import os
 import pyvista as pv
 import torch
 
-import adjoint
-import forward
+# import adjoint
+# import forward
 from typing import Union, List, Literal
 from mpi4py import MPI
 import ctypes
@@ -589,6 +589,11 @@ def train(**kwargs) -> int:
 
     console.print(kwargs)
 
+    if os.path.exists(checkpoint_folder) and len(os.listdir(checkpoint_folder)) > 0:
+        msg = "Folder %s is not empty "%checkpoint_folder
+        log.error(msg)
+        return 1
+    
     npydataset = NumpyDataset(sample_folder, target_folder)
 
     train_size = int(train_size * len(npydataset))
@@ -610,7 +615,7 @@ def train(**kwargs) -> int:
     )
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=checkpoint_folder, every_n_epochs=every_n_epochs, save_top_k=save_top_k
+        dirpath=checkpoint_folder, every_n_epochs=every_n_epochs, save_top_k=save_top_k, monitor="val_loss"
     )
 
     if torch.cuda.is_available():
@@ -627,18 +632,26 @@ def train(**kwargs) -> int:
 
     if load_model:
         if os.path.exists(load_model):
+            try:
+                trainer.fit(
+                    model=model,
+                    train_dataloaders=train_dataloader,
+                    val_dataloaders=test_dataloader,
+                    ckpt_path=load_model,
+                )
+            except Exception as e:
+                log.error(e)
+                return 1
+    else:
+        try:
             trainer.fit(
                 model=model,
                 train_dataloaders=train_dataloader,
                 val_dataloaders=test_dataloader,
-                ckpt_path=load_model,
             )
-    else:
-        trainer.fit(
-            model=model,
-            train_dataloaders=train_dataloader,
-            val_dataloaders=test_dataloader,
-        )
+        except Exception as e:
+            log.error(e)
+            return 1
 
     if save_model:
         log.info("Saving model checkpoint at %s" % save_model)
