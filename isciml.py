@@ -12,10 +12,10 @@ import os
 import pyvista as pv
 import torch
 
-# import adjoint
-# import forward
+#import adjoint
+#import forward
 from typing import Union, List, Literal
-from mpi4py import MPI
+
 import ctypes
 import glob
 from train import NumpyDataset, LitAutoEncoder
@@ -25,14 +25,11 @@ import multiprocessing as mp
 
 
 console = Console()
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 
 FORMAT = "%(message)s"
 logging.basicConfig(
     level="NOTSET",
-    format="Rank: " + str(rank) + "/" + str(size) + ": %(asctime)s - %(message)s",
+    format="%(asctime)s - %(message)s",
     datefmt="[%X]",
     handlers=[RichHandler()],
 )
@@ -383,6 +380,11 @@ def isciml():
     show_default=True,
 )
 def generate_target(**kwargs):
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+
     mesh = Mesh(kwargs["vtk"])
     mesh.get_centroids()
     mesh.get_volumes()
