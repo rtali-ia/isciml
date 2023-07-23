@@ -573,6 +573,13 @@ def generate_target(**kwargs):
     show_default=True,
     required=False,
 )
+@click.option(
+    "--reshape_base",
+    help="Reshape 1D to 2D using base 2 or 8",
+    type=click.Choice(["two","eight"]),
+    default="eight",
+    show_default=True,
+)
 def train(**kwargs) -> int:
     sample_folder = kwargs["sample_folder"]
     target_folder = kwargs["target_folder"]
@@ -589,6 +596,7 @@ def train(**kwargs) -> int:
     checkpoint_folder = kwargs["checkpoint_folder"]
     every_n_epochs = kwargs["every_n_epochs"]
     save_top_k = kwargs["save_top_k"]
+    reshape_base = kwargs["reshape_base"]
 
     console.print(kwargs)
 
@@ -597,7 +605,7 @@ def train(**kwargs) -> int:
         log.error(msg)
         return 1
     
-    npydataset = NumpyDataset(sample_folder, target_folder)
+    npydataset = NumpyDataset(sample_folder, target_folder, reshape_base)
 
     train_size = int(train_size * len(npydataset))
     test_size = len(npydataset) - train_size

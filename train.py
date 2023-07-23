@@ -54,7 +54,7 @@ class LitAutoEncoder(pl.LightningModule):
 
 
 class NumpyDataset(Dataset):
-    def __init__(self, sample_dir, target_dir):
+    def __init__(self, sample_dir, target_dir, reshape_base):
         self.sample_dir = sample_dir
         self.target_dir = target_dir
 
@@ -76,22 +76,33 @@ class NumpyDataset(Dataset):
         assert len(self.sample_files) == len(self.target_files)
 
         npvec = np.load(self.sample_files[0])
+
         ncells = len(npvec)
         nc_sqrt = int(np.sqrt(ncells))
-        ncols = 2 ** (int(np.floor(np.log2(nc_sqrt))))
-        q, r = np.divmod(ncells, ncols)
+        if reshape_base not in ["two","eight"]:
+            log.error("Reshape base has to be two or eight. Please check. Exiting!")
+            exit()
+        
+        if reshape_base == "eight":
+            ncols = 2 ** (int(np.floor(np.log2(nc_sqrt))))
+            q, r = np.divmod(ncells, ncols)
 
-        if r > 0:
-            nrowsi = q + 1
-        else:
-            nrowsi = q
+            if r > 0:
+                nrowsi = q + 1
+            else:
+                nrowsi = q
 
-        # UNet rows and cols must be at least divisible by 8.
-        r8 = np.remainder(nrowsi, 8)
-        if r8 > 0:
-            nrows = nrowsi + 8 - r8
-        else:
-            nrows = nrowsi
+            # UNet rows and cols must be at least divisible by 8.
+            r8 = np.remainder(nrowsi, 8)
+            if r8 > 0:
+                nrows = nrowsi + 8 - r8
+            else:
+                nrows = nrowsi
+        
+        if reshape_base == "two":
+            ncols=2**(int(np.ceil(np.log2(nc_sqrt))))
+            # UNet rows and cols are equal and integer exponents of 2.
+            nrows=ncols
 
         npad = nrows * ncols - ncells
         left_pad = 0
