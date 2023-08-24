@@ -10,17 +10,17 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 
+RUN pip install poetry numpy
 COPY ./ /isciml/
+ENV POETRY_VIRTUALENVS_CREATE=false
 RUN cd /isciml && \
-    pip install -r requirements.txt && \
+    poetry install && \
     cd /isciml/lib && \
     python3 -m numpy.f2py -c calc_and_mig_all_rx.f90 gtet.f90 gfacet.f90 ggfacet.f90 gzfacet.f90 check_divzero1.f90 check_divzero2.f90 -m adjoint && \
     python3 -m numpy.f2py -c calc_all_rx_multi_k.f90 gtet.f90 gfacet.f90 ggfacet.f90 gzfacet.f90 check_divzero1.f90 check_divzero2.f90 -m forward && \
     rm *.f90 
 
 ENV PYTHONPATH="${PYTHONPATH}:/isciml/lib"
-RUN cd /isciml && \
-    pip install . 
 
 CMD ["/bin/bash"]
 

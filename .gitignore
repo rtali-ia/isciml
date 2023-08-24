@@ -130,3 +130,6 @@ dmypy.json
 
 #adjoints
 adjoint_outputs
+lightning_logs
+scripts
+*.ckpt

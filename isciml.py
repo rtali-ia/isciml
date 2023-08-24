@@ -4,26 +4,30 @@ import pandas as pd
 import logging
 from rich.logging import RichHandler
 from rich.progress import track
+from rich.console import Console
 from tqdm import tqdm
 import sys
 import yaml
 import os
 import pyvista as pv
-import adjoint
-import forward
+import torch
+
 from typing import Union, List, Literal
-from mpi4py import MPI
+
 import ctypes
 import glob
+from train import NumpyDataset, LitAutoEncoder
+from torch.utils.data import Dataset, DataLoader
+import lightning.pytorch as pl
+import multiprocessing as mp
 
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
+
+console = Console()
 
 FORMAT = "%(message)s"
 logging.basicConfig(
     level="NOTSET",
-    format="Rank: " + str(rank) + "/" + str(size) + ": %(asctime)s - %(message)s",
+    format="%(asctime)s - %(message)s",
     datefmt="[%X]",
     handlers=[RichHandler()],
 )
@@ -316,7 +320,12 @@ class MagneticSolver:
         return output
 
 
-@click.command()
+@click.group()
+def isciml():
+    log.info("isciml ... ")
+
+
+@isciml.command()
 @click.option(
     "--vtk",
     help="Mesh in vtk file format",
@@ -368,7 +377,15 @@ class MagneticSolver:
     default="adjoint",
     show_default=True,
 )
-def isciml(**kwargs):
+def generate_target(**kwargs):
+    from mpi4py import MPI
+    import adjoint
+    import forward
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+
     mesh = Mesh(kwargs["vtk"])
     mesh.get_centroids()
     mesh.get_volumes()
@@ -438,6 +455,218 @@ def isciml(**kwargs):
 
         adjoint_file_name = output_folder + "/" + output_prefix + "_" + _file_name
         np.save(adjoint_file_name, output)
+
+    return 0
+
+
+@isciml.command()
+@click.option(
+    "--sample_folder",
+    help="Folder with files containing samples",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "--target_folder",
+    help="Folder with files containing targets",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "--n_blocks",
+    help="Number of blocks in UNet",
+    type=int,
+    default=4,
+    show_default=True,
+)
+@click.option(
+    "--start_filters",
+    help="Number of start filters",
+    type=int,
+    default=32,
+    show_default=True,
+)
+@click.option(
+    "--batch_size",
+    help="Batch size for training",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "--max_epochs",
+    help="Maximum number of epochs",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "--learning_rate",
+    help="Adam optimizer learning rate",
+    type=float,
+    default=1e-3,
+    show_default=True,
+)
+@click.option(
+    "--save_model",
+    help="File name to save the checkpoint at the end of training",
+    type=click.Path(),
+    default="pytorch_model.ckpt",
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--load_model",
+    help="Checkpoint file name to load at the beginning of training",
+    type=click.Path(),
+    required=False,
+)
+@click.option(
+    "--train_size",
+    help="Training size",
+    type=float,
+    default=0.8,
+    show_default=True,
+)
+@click.option(
+    "--num_workers",
+    help="Number of workers for data loader",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "--n_gpus",
+    help="Number of GPUs used for training",
+    type=int,
+    default=1,
+    show_default=True,
+)
+@click.option(
+    "--strategy",
+    help="Distributed Data Parallel Strategy",
+    type=str,
+    default="auto",
+    show_default=True,
+)
+@click.option(
+    "--checkpoint_folder",
+    help="Checkpoint folder",
+    type=click.Path(),
+    required=False,
+    default="./lightning_checkpoint_folder",
+    show_default=True,
+)
+@click.option(
+    "--every_n_epochs",
+    help="Number of epochs between checkpoints. This value must be None or non-negative.",
+    type=int,
+    default=None,
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--save_top_k",
+    help="if save_top_k == k, the best k models according to the quantity monitored will be saved",
+    type=int,
+    default=1,
+    show_default=True,
+    required=False,
+)
+@click.option(
+    "--reshape_base",
+    help="Reshape 1D to 2D using base 2 or 8",
+    type=click.Choice(["two","eight"]),
+    default="eight",
+    show_default=True,
+)
+def train(**kwargs) -> int:
+    sample_folder = kwargs["sample_folder"]
+    target_folder = kwargs["target_folder"]
+    n_blocks = kwargs["n_blocks"]
+    start_filters = kwargs["start_filters"]
+    batch_size = kwargs["batch_size"]
+    max_epochs = kwargs["max_epochs"]
+    learning_rate = kwargs["learning_rate"]
+    save_model = kwargs["save_model"]
+    load_model = kwargs["load_model"]
+    train_size = kwargs["train_size"]
+    num_workers = min(mp.cpu_count(), kwargs["num_workers"])
+    strategy = kwargs["strategy"]
+    checkpoint_folder = kwargs["checkpoint_folder"]
+    every_n_epochs = kwargs["every_n_epochs"]
+    save_top_k = kwargs["save_top_k"]
+    reshape_base = kwargs["reshape_base"]
+
+    console.print(kwargs)
+
+    if os.path.exists(checkpoint_folder) and len(os.listdir(checkpoint_folder)) > 0:
+        msg = "Folder %s is not empty "%checkpoint_folder
+        log.error(msg)
+        return 1
+    
+    npydataset = NumpyDataset(sample_folder, target_folder, reshape_base)
+
+    train_size = int(train_size * len(npydataset))
+    test_size = len(npydataset) - train_size
+    log.info("Train size = %d, Validation size = %d" % (train_size, test_size))
+    train_dataset, test_dataset = torch.utils.data.random_split(
+        npydataset, [train_size, test_size]
+    )
+
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, num_workers=num_workers
+    )
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=batch_size, num_workers=num_workers
+    )
+
+    model = LitAutoEncoder(
+        n_blocks=n_blocks, start_filters=start_filters, learning_rate=learning_rate
+    )
+
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=checkpoint_folder, every_n_epochs=every_n_epochs, save_top_k=save_top_k, monitor="val_loss"
+    )
+
+    if torch.cuda.is_available():
+        devices = min(kwargs["n_gpus"], torch.cuda.device_count())
+        trainer = pl.Trainer(
+            max_epochs=max_epochs,
+            accelerator="gpu",
+            devices=devices,
+            strategy=strategy,
+            callbacks=[checkpoint_callback],
+        )
+    else:
+        trainer = pl.Trainer(max_epochs=max_epochs, callbacks=[checkpoint_callback])
+
+    if load_model:
+        if os.path.exists(load_model):
+            try:
+                trainer.fit(
+                    model=model,
+                    train_dataloaders=train_dataloader,
+                    val_dataloaders=test_dataloader,
+                    ckpt_path=load_model,
+                )
+            except Exception as e:
+                log.error(e)
+                return 1
+    else:
+        try:
+            trainer.fit(
+                model=model,
+                train_dataloaders=train_dataloader,
+                val_dataloaders=test_dataloader,
+            )
+        except Exception as e:
+            log.error(e)
+            return 1
+
+    if save_model:
+        log.info("Saving model checkpoint at %s" % save_model)
+        trainer.save_checkpoint(save_model)
 
     return 0
 

@@ -3,9 +3,9 @@ from setuptools import setup
 setup(
     name="isciml",
     version="0.1.0",
-    author='Santi Adavani',
-    author_email='santis@gmail.com',
-    url='https://github.com/santiadavani/isciml',
+    author="Santi Adavani",
+    author_email="santis@gmail.com",
+    url="https://github.com/santiadavani/isciml",
     py_modules=["isciml"],
     install_requires=[
         "click==8.1.3",
