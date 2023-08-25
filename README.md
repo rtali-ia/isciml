@@ -51,6 +51,9 @@ The characters following `root@` and before `:` provides the CONTAINER ID. So, i
 
 ```
 john_doe@DESKTOP-P3DTUJS:~$ docker ps
+CONTAINER ID   IMAGE           COMMAND       CREATED        STATUS        PORTS     NAMES
+90ac627d5f09   s2labs/isciml   "/bin/bash"   46 hours ago   Up 46 hours             sleepy_goldberg
+
 ```
 ### **Running ISCIML To Generate Data For Training**
 
@@ -80,9 +83,7 @@ Options:
 For script execution, the `[required]` options must be specified, the other options will execute with default values. For *generating training data relevant to the day the survey was done*, it is **necessary to change the default values of the ambient field** to the appropriate values of the survey date.
 
 ### **Setting Up Validation Test Run**
-Download the `TTI_Test_Docker` folder to your local machine outside docker. The link to this folder will be sent outside this document.
-
-Go back to the docker shell. Verify that you are currently in the `/` docker folder as shown below.
+Go to the docker shell. Verify that you are currently in the `/` docker folder as shown below.
 ```
 root@90ac627d5f09:/# pwd
 /
@@ -93,13 +94,18 @@ root@90ac627d5f09:/# ls
 bin   dev  home lib    lib64   media  opt   root  sbin  sys  usr boot  etc  isciml  lib32  libx32  mnt proc  run   srv   tmp  var
 
 root@90ac627d5f09:/# cd isciml
-root@90ac627d5f09:/isciml# 
+root@90ac627d5f09:/isciml# ls
+Dockerfile  config_forward.yaml receiver_locations.csv   LICENSE    data    requirements.txt    README.md   isciml.egg-info.    setup.py     __pycache__   isciml.py   test.vtk  adjoint_outputs  lib     build     material_properties_all.npy   tests.py  config_adjoint.yaml   material_properties_sus.npy   venv
 ```
-Now create a test folder `test_data_gen`. 
+You should see a `data` folder that contains all the necessary input data. This folder includes two input files named `mesh.vtk`, `receiver_locations.csv` and a subdirectory named `adjoints` which in turn contains a subdirectory named `inputs` that contains another input file named `geomag_pipe_sus_0.npy`.  
+```
+root@90ac627d5f09:/# ls data/adjoints/inputs/
+geomag_pipe_sus_0.npy
+```
 
+<!---
 Return to local linux/ubuntu shell outside docker. From this separate local linux/ubuntu shell (which is outside docker prompt), import the following files to the docker folder using the specific version of the command:
 `sudo docker cp <local file pathname> <CONTAINER ID>:/to-be-copied-to-folder`
-
 As a specific example,
 ```
 john_doe@DESKTOP-P3DTUJS:~$ sudo docker cp TTI_Test_Docker/mesh.vtk 90ac627d5f09:./isciml/test_data_gen/
@@ -109,10 +115,11 @@ Depending on your user settings, you may be asked for your local password once o
 Use the same command to import `receiver_data.csv` file and the `inpt_adj` folder, taking care to use -r as appropriate for copying the folder. 
 
 Now, switch back to `docker shell` which in this specific example is `root@90ac627d5f09:` and navigate to the `isciml/test_data_gen` folder. In this folder create `out_adj` folder.
+-->
 
-Now execute the `isciml` script with the following options:
+Now create a test folder `test_data_gen`. Then, navigate to the `test_data_gen` folder. In this folder create `out_adj` folder for saving the generated output data. Inside `test_data_gen` folder, now execute the `isciml` script with the following options:
 ```
-isciml --vtk mesh.vtk --receiver_file receiver_data.csv --input_folder inpt_adj --output_folder out_adj --output_prefix test_adjoint --ambient_field 820.5 16241.7 53380.0
+isciml --vtk ../data/mesh.vtk --receiver_file ../data/receiver_locations.csv --input_folder ../data/adjoints/inputs --output_folder out_adj --output_prefix test_mpi_adjoint --ambient_field 820.5 16241.7 53380.0
 ```
 It may take approximately 9 - 12 minutes to complete execution and generating the 3 output data in the `out_adj` folder.
 
@@ -120,11 +127,15 @@ To speed up the process, we can run this in parallel using mpi.
 
 ### **Running ISCIML With MPIRUN**
 
-First step is to create a separate **empty** folder for the output. Let's create this folder as `out_adj_mpi`.
+First step is to create a separate **empty** folder for the output. Let's create this folder as `out_adj_mpi`. The second step is to create one input file per MPI rank inside `data/adjoints/inputs` directory. For example, if 2 procs are used (specified by `--np 2` for the `mpirun` option), we need to have at least **2** npy files. For illustration, we can create a file named `data/adjoints/inputs/geomag_pipe_sus_1.npy`  (`data/adjoints/inputs/geomag_pipe_sus_0.npy` already exists). The names of the files can be arbitrary.
 
 Now, execute the following command from the same `test_data_gen` folder from where the previous call was executed.
 
 ```
-mpirun --allow-run-as-root --np 2 isciml --vtk mesh.vtk --receiver_file receiver_data.csv --input_folder inpt_adj --output_folder out_adj_mpi --output_prefix test_mpi_adjoint --ambient_field 820.5 16241.7 53380.0
+mpirun --allow-run-as-root --np 2 isciml --vtk ../data/mesh.vtk --receiver_file ../data/receiver_locations.csv --input_folder ../data/adjoints/inputs --output_folder out_adj --output_prefix test_mpi_adjoint --ambient_field 820.5 16241.7 53380.0
 ```
-The `--np 2` option specifies the number of CPUs that will be used for this run. The docker has rank 2, so only 2 CPUs will be accessed. As this gets transferred to larger machines, the `np x` option will take in larger numbers. The main caveat is that we cannot have `x > number of input npy files` in the `inpt_adj` folder.
+The docker has rank 2, so only 2 CPUs will be accessed. As this gets transferred to larger machines, the `np x` option will take in larger numbers. 
+
+<!---
+The main caveat is that we cannot have `x > number of input npy files` in the `inpt_adj` folder.
+-->
