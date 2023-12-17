@@ -12,6 +12,10 @@ import os
 import pyvista as pv
 import torch
 
+from mpi4py import MPI
+import adjoint
+import forward
+
 from typing import Union, List, Literal
 
 import ctypes
@@ -23,11 +27,14 @@ import multiprocessing as mp
 
 
 console = Console()
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
 
 FORMAT = "%(message)s"
 logging.basicConfig(
     level="NOTSET",
-    format="%(asctime)s - %(message)s",
+    format="Rank: " + str(rank) + "/" + str(size) + ": %(asctime)s - %(message)s",
     datefmt="[%X]",
     handlers=[RichHandler()],
 )
@@ -36,8 +43,8 @@ log = logging.getLogger("rich")
 
 class Mesh:
     def __init__(self, vtk_file_name: Union[str, os.PathLike]):
-        if not rank:
-            log.debug("Reading vtk file %s" % vtk_file_name)
+        
+        log.debug("Reading vtk file %s" % vtk_file_name)
         if os.path.exists(vtk_file_name):
             self.vtk_file_name = vtk_file_name
         else:
@@ -49,22 +56,22 @@ class Mesh:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
-        if not rank:
-            log.debug("Reading mesh completed")
+        
+        log.debug("Reading mesh completed")
 
         self.npts = self.mesh.n_points
         self.ncells = self.mesh.n_cells
         self.nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
-        if not rank:
-            log.debug("Generated mesh properties")
+        
+        log.debug("Generated mesh properties")
 
     def __str__(self):
         return str(self.mesh)
 
     def get_centroids(self):
-        if not rank:
-            log.debug("Getting centroids")
+        
+        log.debug("Getting centroids")
         nk = self.tet_nodes[:, 0]
         nl = self.tet_nodes[:, 1]
         nm = self.tet_nodes[:, 2]
@@ -75,12 +82,12 @@ class Mesh:
             + self.nodes[nm, :]
             + self.nodes[nn, :]
         ) / 4.0
-        if not rank:
-            log.debug("Getting centroids done!")
+        
+        log.debug("Getting centroids done!")
 
     def get_volumes(self):
-        if not rank:
-            log.debug("Getting volumes")
+        
+        log.debug("Getting volumes")
         ntt = len(self.tet_nodes)
         vot = np.zeros((ntt))
         for itet in np.arange(0, ntt):
@@ -107,8 +114,8 @@ class Mesh:
             )
             vot[itet] = np.abs(pv / 6.0)
         self.volumes = vot
-        if not rank:
-            log.debug("Getting volumes done!")
+        
+        log.debug("Getting volumes done!")
 
 
 class MagneticProperties:
@@ -171,23 +178,22 @@ class MagneticSolver:
         self,
         reciever_file_name: Union[str, os.PathLike],
         ambient_magnetic_field: List[float],
-        header: Union[int, List[int], None] = None,
+        header,
     ):
-        if not rank:
-            log.debug("Solver initialization started!")
+        
         if os.path.exists(reciever_file_name):
             self.reciever_file_name = reciever_file_name
         else:
             msg = "File %s does not exist" % reciever_file_name
-            if not rank:
-                log.error(msg)
+            log.error(msg)
             raise ValueError(msg)
 
-        if not header:
-            header = None
-
         try:
-            self.receiver_locations = pd.read_csv(reciever_file_name, header=header)
+            if header:
+                self.receiver_locations = pd.read_csv(reciever_file_name)
+            else:
+                self.receiver_locations = pd.read_csv(reciever_file_name, header=None)
+            log.debug("Receiver file shape: " + str(self.receiver_locations.shape))
         except Exception as e:
             log.error(e)
             raise ValueError(e)
@@ -197,8 +203,7 @@ class MagneticSolver:
                 "Length of ambient magnetic field has to be exactly 3, passed a length of %d"
                 % len(ambient_magnetic_field)
             )
-            if not rank:
-                log.error(msg)
+            log.error(msg)
             raise ValueError(msg)
 
         self.Bx = ambient_magnetic_field[0]
@@ -209,8 +214,8 @@ class MagneticSolver:
         self.LX = self.Bx / self.Bv
         self.LY = self.By / self.Bv
         self.LZ = self.Bz / self.Bv
-        if not rank:
-            log.debug("Solver initialization done!")
+        
+        log.debug("Solver initialization done!")
 
     def solve(
         self,
@@ -340,10 +345,9 @@ def isciml():
 )
 @click.option(
     "--receiver_header",
-    help="Header parameter is Union[int, List[int], None]",
-    type=int,
-    multiple=True,
-    default=None,
+    help="Boolean flag to set if there is a header. Default assumption is there is no header.",
+    is_flag=True,
+    default=False,
     show_default=True,
 )
 @click.option(
@@ -378,9 +382,7 @@ def isciml():
     show_default=True,
 )
 def generate_target(**kwargs):
-    from mpi4py import MPI
-    import adjoint
-    import forward
+    
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
