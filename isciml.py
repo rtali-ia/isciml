@@ -15,6 +15,7 @@ import torch
 from mpi4py import MPI
 import adjoint
 import forward
+from random import sample
 
 from typing import Union, List, Literal
 
@@ -43,7 +44,6 @@ log = logging.getLogger("rich")
 
 class Mesh:
     def __init__(self, vtk_file_name: Union[str, os.PathLike]):
-        
         log.debug("Reading vtk file %s" % vtk_file_name)
         if os.path.exists(vtk_file_name):
             self.vtk_file_name = vtk_file_name
@@ -56,21 +56,20 @@ class Mesh:
         except Exception as e:
             log.error(e)
             raise ValueError(e)
-        
+
         log.debug("Reading mesh completed")
 
         self.npts = self.mesh.n_points
         self.ncells = self.mesh.n_cells
         self.nodes = np.array(self.mesh.points)
         self.tet_nodes = self.mesh.cell_connectivity.reshape((-1, 4))
-        
+
         log.debug("Generated mesh properties")
 
     def __str__(self):
         return str(self.mesh)
 
     def get_centroids(self):
-        
         log.debug("Getting centroids")
         nk = self.tet_nodes[:, 0]
         nl = self.tet_nodes[:, 1]
@@ -82,11 +81,10 @@ class Mesh:
             + self.nodes[nm, :]
             + self.nodes[nn, :]
         ) / 4.0
-        
+
         log.debug("Getting centroids done!")
 
     def get_volumes(self):
-        
         log.debug("Getting volumes")
         ntt = len(self.tet_nodes)
         vot = np.zeros((ntt))
@@ -114,7 +112,7 @@ class Mesh:
             )
             vot[itet] = np.abs(pv / 6.0)
         self.volumes = vot
-        
+
         log.debug("Getting volumes done!")
 
 
@@ -179,8 +177,8 @@ class MagneticSolver:
         reciever_file_name: Union[str, os.PathLike],
         ambient_magnetic_field: List[float],
         header,
+        perturb_receiver_z,
     ):
-        
         if os.path.exists(reciever_file_name):
             self.reciever_file_name = reciever_file_name
         else:
@@ -198,6 +196,14 @@ class MagneticSolver:
             log.error(e)
             raise ValueError(e)
 
+        if perturb_receiver_z:
+            zpts = np.random.normal(
+                self.receiver_locations.iloc[:, 2].median(),
+                self.receiver_locations.iloc[:, 2].std(),
+                len(self.receiver_locations.iloc[:, 2]),
+            )
+            self.receiver_locations.iloc[:, 2] = zpts
+
         if len(ambient_magnetic_field) != 3:
             msg = (
                 "Length of ambient magnetic field has to be exactly 3, passed a length of %d"
@@ -214,7 +220,7 @@ class MagneticSolver:
         self.LX = self.Bx / self.Bv
         self.LY = self.By / self.Bv
         self.LZ = self.Bz / self.Bv
-        
+
         log.debug("Solver initialization done!")
 
     def solve(
@@ -345,7 +351,14 @@ def isciml():
 )
 @click.option(
     "--receiver_header",
-    help="Boolean flag to set if there is a header. Default assumption is there is no header.",
+    help="Boolean flag to set if there is a header. Default is there is no header.",
+    is_flag=True,
+    default=False,
+    show_default=True,
+)
+@click.option(
+    "--perturb_receiver_z",
+    help="Boolean flag to perturb receiver z location. Default is there is no peturbation.",
     is_flag=True,
     default=False,
     show_default=True,
@@ -382,20 +395,23 @@ def isciml():
     show_default=True,
 )
 def generate_target(**kwargs):
-    
-
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
 
-    mesh = Mesh(kwargs["vtk"])
-    mesh.get_centroids()
-    mesh.get_volumes()
+    vtk_path = kwargs["vtk"]
+
+    if os.path.isfile(vtk_path):
+        vtk_files = [vtk_path]
+    
+    if os.path.isdir(vtk_path):
+        vtk_files = glob.glob(kwargs["vtk_path"] + "/*.vtk")
 
     solver = MagneticSolver(
         kwargs["receiver_file"],
         kwargs["ambient_field"],
         kwargs["receiver_header"],
+        kwargs["perturb_receiver_z"],
     )
 
     output_folder = kwargs["output_folder"]
@@ -448,6 +464,12 @@ def generate_target(**kwargs):
         numpy_files[start_file_index:end_file_index], description="Rank %d" % rank
     ):
         properties = MagneticProperties(_file, kwargs["ambient_field"])
+
+        mesh_file = sample(vtk_files,1)
+        mesh = Mesh(mesh_file)
+        mesh.get_centroids()
+        mesh.get_volumes()
+
         output = solver.solve(mesh, properties, mode=kwargs["solver"])
         _file_name = _file.split("/")[-1]
 
@@ -578,7 +600,7 @@ def generate_target(**kwargs):
 @click.option(
     "--reshape_base",
     help="Reshape 1D to 2D using base 2 or 8",
-    type=click.Choice(["two","eight"]),
+    type=click.Choice(["two", "eight"]),
     default="eight",
     show_default=True,
 )
@@ -603,10 +625,10 @@ def train(**kwargs) -> int:
     console.print(kwargs)
 
     if os.path.exists(checkpoint_folder) and len(os.listdir(checkpoint_folder)) > 0:
-        msg = "Folder %s is not empty "%checkpoint_folder
+        msg = "Folder %s is not empty " % checkpoint_folder
         log.error(msg)
         return 1
-    
+
     npydataset = NumpyDataset(sample_folder, target_folder, reshape_base)
 
     train_size = int(train_size * len(npydataset))
@@ -628,7 +650,10 @@ def train(**kwargs) -> int:
     )
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=checkpoint_folder, every_n_epochs=every_n_epochs, save_top_k=save_top_k, monitor="val_loss"
+        dirpath=checkpoint_folder,
+        every_n_epochs=every_n_epochs,
+        save_top_k=save_top_k,
+        monitor="val_loss",
     )
 
     if torch.cuda.is_available():
