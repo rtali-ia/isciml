@@ -350,7 +350,7 @@ def isciml():
     required=True,
 )
 @click.option(
-    "--receiver_header",
+    "--receiver_file_has_header",
     help="Boolean flag to set if there is a header. Default is there is no header.",
     is_flag=True,
     default=False,
@@ -394,7 +394,7 @@ def isciml():
     default="adjoint",
     show_default=True,
 )
-def generate_target(**kwargs):
+def generate(**kwargs):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
@@ -405,12 +405,12 @@ def generate_target(**kwargs):
         vtk_files = [vtk_path]
     
     if os.path.isdir(vtk_path):
-        vtk_files = glob.glob(kwargs["vtk_path"] + "/*.vtk")
+        vtk_files = glob.glob(vtk_path + "/*.vtk")
 
     solver = MagneticSolver(
         kwargs["receiver_file"],
         kwargs["ambient_field"],
-        kwargs["receiver_header"],
+        kwargs["receiver_file_has_header"],
         kwargs["perturb_receiver_z"],
     )
 
@@ -466,7 +466,7 @@ def generate_target(**kwargs):
         properties = MagneticProperties(_file, kwargs["ambient_field"])
 
         mesh_file = sample(vtk_files,1)
-        mesh = Mesh(mesh_file)
+        mesh = Mesh(mesh_file[0])
         mesh.get_centroids()
         mesh.get_volumes()
 
