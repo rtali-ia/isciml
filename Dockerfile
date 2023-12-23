@@ -10,7 +10,7 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 
-RUN pip install poetry numpy
+RUN pip install poetry numpy mpi4py
 COPY ./ /isciml/
 ENV POETRY_VIRTUALENVS_CREATE=false
 RUN cd /isciml && \
