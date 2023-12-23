@@ -415,17 +415,17 @@ def generate(**kwargs):
     )
 
     output_folder = kwargs["output_folder"]
+    
     if os.path.exists(output_folder):
         if os.listdir(output_folder):
-            msg = "Output folder %s is not empty - exiting" % output_folder
-            if not rank:
-                log.error(msg)
+            msg = "Output folder %s is not empty - this will overwrite files" % output_folder
+            log.error(msg)
             sys.exit(1)
     else:
         msg = "Output folder %s does not exist - creating.. " % output_folder
+        log.debug(msg)
         if not rank:
-            log.debug(msg)
-        os.mkdir(output_folder)
+            os.mkdir(output_folder)
 
     # Reading magnetic properites files and distributing them across processes
     if os.path.exists(kwargs["input_folder"]):
