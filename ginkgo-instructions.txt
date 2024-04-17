@@ -1,0 +1,13 @@
+# Ginkgo Solver
+# Jetstream Public IP - 149.165.154.112
+# Password - GRIM JOIN NAB PRY PUG NODE COAL WAKE GOT SHED IDA
+#Path - /home/exouser/freq_domain_solver
+# Steps:
+1. Navigate to project path above.
+2. Create a directory "data" under the path. In here, dump A.mtx [This is COO matrix created at Python Code], b.mtx [This has to be a dense vector, COO vector doesn't have a transpose in Ginkgo], x0.mtx is just a dummy vector passed to Ginkgo as a starting guess. x0.mtx has the same size as b vector. Also created in Python
+3. The main code is present under the above path as simple-solver.cpp. It has the full implementation.
+#How to Run
+1. Navigate to the "build" directory under the above path
+2. Run "cmake .." - cmake file has already been configured. Once complete, go to Step - 3
+3. Run "make" - This will create the executable simple-solver inside build.
+4. To see the solution, run ./simple-solver - You are still inside the "build" directory.
