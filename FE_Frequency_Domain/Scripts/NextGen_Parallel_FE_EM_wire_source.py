@@ -1,3 +1,8 @@
+####################
+# Ronak : File Edits
+####################
+
+
 import numpy as np
 import pandas as pd
 from numpy.linalg import inv
@@ -803,58 +808,30 @@ if __name__ == '__main__':
     A_csc = A_coo.tocsc()
 
     val_b = -1j*omg*val_s1
-    b_coo = sp.coo_matrix((val_b, (row_id_s1, col_id_s1)),
-                          shape=(n_in_edge, 1))
-    b_csc = b_coo.tocsc()
+    # b_coo = sp.coo_matrix((val_b, (row_id_s1, col_id_s1)),
+    #                       shape=(n_in_edge, 1))
+    # b_csc = b_coo.tocsc()
 
-    toc1 = time.time()
-
-    print('Set up ', n_in_edge, 'X', n_in_edge,
-          ' FE Stiffness Matrix Vector Equation in ', toc1-tic1, ' seconds.')
-
-    # Write the matrix to a mmt file
-    target = 'FE_stiffness_matrix.mtx'
+    # Write the sparse matrix A (coo) to a mmt file
+    target = 'A.mtx'
     mmwrite(target, A_coo)
 
-    vect = 'FE_stiffness_vector.mtx'
-    mmwrite(vect, b_coo)
+    #######################################################################################
+    # --------------------------------- CAUTION --------------------------------------------
+    # Write the vector to a mmt file. Here it is not clear to me what the dense b vector is
+    # I have kept it blank
+    #######################################################################################
 
-    # Create the initial guess with unit norm and zero phase
+    vect = 'B.mtx'
+    mmwrite(vect, )  # Pass the dense b vector after comma here
+
+    # Create the initial guess dense vector with unit norm and zero phase. Ginkgo solver requires this to run Conjugate Gradient method
     guess = (1/np.sqrt(n_in_edge))*np.ones((n_in_edge,), dtype=complex)
-    guess_coo = sp.coo_matrix(guess)
     start = 'x0.mtx'
-    mmwrite(start, guess_coo)
+    mmwrite(start, guess)
 
-    # print('solving FE stiffness matrix')
-
-    # FE_x = spsolve(A_csc,b_csc)
-
-    # toc2 = time.time()
-    # print() ; print ('SOLVE TIME:', toc2-toc1, 'sec') ; print()
-
-    # Post processing
-
-    # dfrxpts=pd.read_csv(rxcoord_folder+rxcoord_filename+'.csv')
-    # reccoords=dfrxpts.to_numpy()
-
-    # recindx=list(range(len(reccoords)))
-    # E_recs = np.zeros((len(reccoords),9), dtype=float)
-    # for irx in recindx:
-    #     Erec_i=Efield_postproc(irx)
-    #     E_recs[irx]=np.array(Erec_i)
-
-    # # E_recs = Parallel(n_jobs=job_cpus, prefer="processes")(delayed(Efield_postproc)(irx) for irx in recindx)
-    # # E_recs = Parallel(n_jobs=job_cpus, backend='loky')(delayed(Efield_postproc)(irx) for irx in recindx)
-
-    # toc3 = time.time()
-
-    # print() ; print ('POST PROCESSED E FIELD:', toc3-toc2, 'seconds.') ; print()
-
-    # xyzcolnames.extend(['real Ex','imag Ex','real Ey','imag Ey','real Ez','imag Ez'])
-
-    # # exportdf=pd.DataFrame(np.array(E_recs),columns=xyzcolnames)
-    # exportdf=pd.DataFrame(E_recs,columns=xyzcolnames)
-    # exportdf.to_csv(export_filepath, index=False)
-
-    # toc4=time.time()
-    # print() ; print ('Done. Start to finish:', toc4-start_time, 'seconds.') ; print()
+    ##########################################################################################
+    # A, b, x0 are the files that are to be passed to the Ginkgo solver.
+    # Copy these files to the Ginkgo solver directory and place them under ~/data and follow
+    # the Ginkgo solver instructions
+    ##########################################################################################
